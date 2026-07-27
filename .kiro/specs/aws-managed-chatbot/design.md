@@ -538,7 +538,7 @@ interface S3ContentDocument {
 ### Secrets Manager Schema
 
 ```
-/{clientId}/secrets/api-keys     → JSON: { widgetKey, adminKey }
+/{clientId}/secrets/api-keys     → JSON: { appKey, adminKey }
 /{clientId}/secrets/datasource   → JSON: { apiToken, webhookSecret }
 ```
 
@@ -567,7 +567,7 @@ interface DeploymentConfig {
     requestsPerMinute?: number; // default 30
   };
   apiKeys: {
-    widgetKey: string;
+    appKey: string;
     adminKey: string;
   };
   monitoring: {

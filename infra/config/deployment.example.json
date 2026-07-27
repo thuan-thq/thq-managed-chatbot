@@ -21,7 +21,7 @@
     "requestsPerMinute": 30
   },
   "apiKeys": {
-    "widgetKey": "wk-your-widget-key-here",
+    "appKey": "wk-your-widget-key-here",
     "adminKey": "ak-your-admin-key-here"
   },
   "monitoring": {
