@@ -1,0 +1,31 @@
+{
+  "clientId": "example-client",
+  "region": "ap-southeast-2",
+  "modelId": "au.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "confidenceThreshold": 0.3,
+  "dataSource": {
+    "type": "strapi",
+    "baseUrl": "https://cms.example.com",
+    "apiToken": "your-api-token-here",
+    "webhookSecret": "your-webhook-secret-here",
+    "frontendBaseUrl": "https://staging.intranet.think-hq.com.au",
+    "pageSize": 100
+  },
+  "session": {
+    "duration": 30,
+    "turnLimit": 50,
+    "tokenBudget": 8000,
+    "retentionDays": 7
+  },
+  "rateLimit": {
+    "requestsPerMinute": 30
+  },
+  "apiKeys": {
+    "widgetKey": "wk-your-widget-key-here",
+    "adminKey": "ak-your-admin-key-here"
+  },
+  "monitoring": {
+    "budgetAmount": 50,
+    "alarmEmail": "alerts@example.com"
+  }
+}
