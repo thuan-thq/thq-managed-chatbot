@@ -45,6 +45,42 @@ const BASE_URL_PATTERN = /^https?:\/\/.+/;
 
 export class ConfigLoader {
   /**
+   * Merges an optional external collections array into the raw config, then
+   * loads and validates it.
+   *
+   * When `collectionsRaw` is a non-empty array it is injected as
+   * `strapi.collections`, overriding any inline collections already present
+   * in `deploymentRaw`. This lets operators keep the bulky collections config
+   * in a separate `collections.json` file while keeping `deployment.json`
+   * lean.
+   *
+   * Falls back to plain `ConfigLoader.load(deploymentRaw)` when
+   * `collectionsRaw` is absent, null, or not an array.
+   */
+  static loadWithCollections(
+    deploymentRaw: unknown,
+    collectionsRaw?: unknown,
+  ): ClientConfig {
+    if (Array.isArray(collectionsRaw) && collectionsRaw.length > 0) {
+      // Deep-clone so we don't mutate the caller's object
+      const merged = JSON.parse(JSON.stringify(deploymentRaw)) as Record<
+        string,
+        unknown
+      >;
+      if (
+        merged["strapi"] &&
+        typeof merged["strapi"] === "object" &&
+        !Array.isArray(merged["strapi"])
+      ) {
+        (merged["strapi"] as Record<string, unknown>)["collections"] =
+          collectionsRaw;
+      }
+      return ConfigLoader.load(merged);
+    }
+    return ConfigLoader.load(deploymentRaw);
+  }
+
+  /**
    * Validates `raw` against the ClientConfig schema.
    *
    * All errors are collected before returning (fail-slow collection).

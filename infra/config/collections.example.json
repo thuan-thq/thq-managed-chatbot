@@ -1,0 +1,46 @@
+[
+  {
+    "name": "articles",
+    "strapiUid": "api::article.article",
+    "markdownStrategy": "content-blocks",
+    "fieldMappings": {
+      "titleFields": ["title"],
+      "slugField": "slug",
+      "summaryField": "summary",
+      "contentBlocksField": "content_blocks",
+      "lastModifiedField": "updatedAt"
+    },
+    "urlPathTemplate": "/articles/{slug}",
+    "populate": {
+      "fields": [
+        {
+          "key": "populate[content_blocks][on][dynamic.text-block][populate]",
+          "value": "*"
+        }
+      ]
+    }
+  },
+  {
+    "name": "blog-posts",
+    "strapiUid": "api::blog-post.blog-post",
+    "markdownStrategy": "rich-text",
+    "fieldMappings": {
+      "titleFields": ["title"],
+      "slugField": "slug",
+      "richTextField": "body",
+      "lastModifiedField": "updatedAt"
+    },
+    "urlPathTemplate": "/blog/{slug}"
+  },
+  {
+    "name": "faqs",
+    "strapiUid": "api::faq.faq",
+    "markdownStrategy": "flat-fields",
+    "fieldMappings": {
+      "titleFields": ["question"],
+      "flatFields": ["question", "answer"],
+      "lastModifiedField": "updatedAt"
+    },
+    "urlPathTemplate": "/faqs/{slug}"
+  }
+]

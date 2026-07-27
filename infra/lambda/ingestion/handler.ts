@@ -44,9 +44,26 @@ import {
 // at cold start (rather than silently ingesting nothing) when the config is
 // misconfigured.  Requirements: 7.1, 7.2
 //
+// Collections can optionally live in a separate collections.json file to keep
+// deployment.json lean. When collections.json exists it overrides the inline
+// strapi.collections array in deployment.json.
+//
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const deploymentConfig: unknown = require("../../config/deployment.json");
-const config: ClientConfig = ConfigLoader.load(deploymentConfig);
+
+let collectionsOverride: unknown;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  collectionsOverride = require("../../config/collections.json");
+} catch {
+  // collections.json is optional — absence is not an error
+  collectionsOverride = undefined;
+}
+
+const config: ClientConfig = ConfigLoader.loadWithCollections(
+  deploymentConfig,
+  collectionsOverride,
+);
 const uidMap = buildUidCollectionMap(config.strapi.collections);
 
 // ---- API Gateway v2 event type (HTTP API payload format 2.0) ----
