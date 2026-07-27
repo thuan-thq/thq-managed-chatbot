@@ -21,7 +21,6 @@ import { FullSyncPipeline, FullSyncResult } from "./sync-pipeline";
 import { S3ContentClient } from "./s3-client";
 import { SyncStateClient } from "./dynamo-client";
 import { BedrockSyncClient } from "./bedrock-client";
-import { StrapiAdapter } from "./strapi-adapter";
 import { RetryHttpClient } from "./http-client";
 import {
   WebhookEventRouter,
@@ -31,6 +30,24 @@ import {
   SecretsManagerClient,
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
+import { ConfigLoader } from "./config-loader";
+import { ClientConfig } from "./config-types";
+import { buildUidCollectionMap, lookupCollection } from "./uid-collection-map";
+import {
+  ConfigurableStrapiAdapter,
+  ConfigurableStrapiAdapterConfig,
+} from "./configurable-strapi-adapter";
+
+// ---- Config-driven cold start ----
+//
+// Load and validate deployment config at module init so the Lambda fails fast
+// at cold start (rather than silently ingesting nothing) when the config is
+// misconfigured.  Requirements: 7.1, 7.2
+//
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const deploymentConfig: unknown = require("../../config/deployment.json");
+const config: ClientConfig = ConfigLoader.load(deploymentConfig);
+const uidMap = buildUidCollectionMap(config.strapi.collections);
 
 // ---- API Gateway v2 event type (HTTP API payload format 2.0) ----
 
@@ -71,7 +88,7 @@ interface WebhookPayload {
   recordId: string;
   timestamp: string;
   data?: Record<string, unknown>;
-  /** Collection derived from Strapi uid (e.g. "intranet-pages" from "api::intranet-page.intranet-page") */
+  /** Collection derived from Strapi uid via UidCollectionMap. Requirements: 5.1, 5.3 */
   collection?: string;
 }
 
@@ -199,33 +216,13 @@ function isDirectInvocation(
 }
 
 /**
- * Strapi collections to ingest. Managed in code - add new collections here.
- */
-const STRAPI_COLLECTIONS = [
-  "intranet-pages",
-  "intranet-teams",
-  "intranet-people",
-];
-
-/**
- * Maps Strapi content-type uid prefixes to the actual REST API collection name.
- * Strapi uid format: "api::intranet-person.intranet-person"
- * Naive pluralization (appending "s") doesn't work for irregular plurals.
- */
-const STRAPI_UID_TO_COLLECTION: Record<string, string> = {
-  "intranet-page": "intranet-pages",
-  "intranet-team": "intranet-teams",
-  "intranet-person": "intranet-people",
-};
-
-/**
  * Handle a full sync direct invocation.
  *
- * For Strapi sources, iterates over all configured collections
- * (articles, intranet-pages) and syncs each one. A specific collection
- * can be targeted via the `collection` field in the event payload.
+ * Derives the list of collections exclusively from config.strapi.collections
+ * (Req 6.1). Returns a zero FullSyncResult immediately when no collections
+ * are configured (Req 6.2).
  *
- * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6
+ * Requirements: 6.1, 6.2, 6.3, 6.4
  */
 async function handleFullSync(
   event: DirectInvocationEvent,
@@ -237,6 +234,26 @@ async function handleFullSync(
   const knowledgeBaseId = process.env.KNOWLEDGE_BASE_ID ?? "";
   const dataSourceId = process.env.DATA_SOURCE_ID ?? "";
 
+  // Derive collections exclusively from config (Req 6.1)
+  const collections = config.strapi.collections.map((c) => c.name);
+
+  // Req 6.2: empty collections — return immediately with zero result
+  if (collections.length === 0) {
+    console.log(
+      JSON.stringify({
+        level: "INFO",
+        message: "No collections configured - full sync skipped",
+      }),
+    );
+    return {
+      recordsProcessed: 0,
+      errors: [],
+      success: true,
+      ingestionJobId: undefined,
+      resumed: false,
+    };
+  }
+
   // Retrieve data source credentials from Secrets Manager
   const secretId = `/${clientId}/secrets/datasource`;
   const secretResponse = await secretsClient.send(
@@ -247,10 +264,10 @@ async function handleFullSync(
     throw new Error("Data source secret not found in Secrets Manager");
   }
 
-  const secrets = JSON.parse(secretResponse.SecretString);
-
-  // Always sync all Strapi collections
-  const collections = STRAPI_COLLECTIONS;
+  const secrets = JSON.parse(secretResponse.SecretString) as Record<
+    string,
+    string
+  >;
 
   console.log(
     JSON.stringify({
@@ -262,7 +279,24 @@ async function handleFullSync(
     }),
   );
 
-  // Run sync for each collection, aggregating results
+  // Build a single shared ConfigurableStrapiAdapter for all collections.
+  // Secrets supply the runtime API token; config supplies structure.
+  const adapterConfig: ConfigurableStrapiAdapterConfig = {
+    baseUrl: config.strapi.baseUrl,
+    apiToken:
+      secrets.apiToken ?? secrets.strapiToken ?? config.strapi.apiToken ?? "",
+    frontendBaseUrl:
+      config.strapi.frontendBaseUrl ??
+      secrets.frontendBaseUrl ??
+      process.env.FRONTEND_BASE_URL,
+    collections: config.strapi.collections,
+  };
+  const adapter = new ConfigurableStrapiAdapter(
+    adapterConfig,
+    new RetryHttpClient(),
+  );
+
+  // Run sync for each collection, aggregating results (Req 6.3, 6.4)
   let totalRecordsProcessed = 0;
   const allErrors: string[] = [];
   let lastIngestionJobId: string | undefined;
@@ -278,9 +312,6 @@ async function handleFullSync(
         clientId,
       }),
     );
-
-    // Create adapter for this collection
-    const adapter = createAdapter(sourceType, collection, secrets);
 
     // Create pipeline dependencies
     const s3Client = new S3ContentClient({ bucketName });
@@ -310,6 +341,7 @@ async function handleFullSync(
     }
 
     if (!result.success) {
+      // Req 6.3: log WARN and continue with remaining collections
       console.log(
         JSON.stringify({
           level: "WARN",
@@ -328,32 +360,6 @@ async function handleFullSync(
     ingestionJobId: lastIngestionJobId,
     resumed: anyResumed,
   };
-}
-
-/**
- * Factory to create a Strapi adapter for a given collection.
- *
- * Collections are managed in code via STRAPI_COLLECTIONS.
- */
-function createAdapter(
-  sourceType: string,
-  collection: string,
-  secrets: Record<string, string>,
-): StrapiAdapter {
-  if (sourceType !== "strapi") {
-    throw new Error(`Unsupported source type: ${sourceType}`);
-  }
-
-  return new StrapiAdapter(
-    {
-      baseUrl:
-        secrets.apiEndpoint ?? secrets.baseUrl ?? secrets.strapiUrl ?? "",
-      apiToken: secrets.apiToken ?? secrets.strapiToken ?? "",
-      collection,
-      frontendBaseUrl: secrets.frontendBaseUrl ?? process.env.FRONTEND_BASE_URL,
-    },
-    new RetryHttpClient(),
-  );
 }
 
 // ---- Route handlers ----
@@ -501,8 +507,9 @@ async function handleWebhook(
 /**
  * Normalizes a Strapi webhook payload to the internal WebhookPayload format.
  *
- * Strapi sends: { event: "entry.create", model: "article", entry: { id, ...fields } }
- * We normalize to: { event: "create", recordId: "article-42", timestamp: "...", data: { ...fields } }
+ * Looks up the incoming uid in the config-driven UidCollectionMap (Req 5.2, 5.3).
+ * Logs WARN and leaves collection undefined for unrecognised or non-api:: UIDs
+ * (Req 5.4, 5.5) — handled by lookupCollection.
  */
 function normalizeStrapiPayload(raw: Record<string, unknown>): WebhookPayload {
   // If already in our format (has recordId), pass through
@@ -534,17 +541,11 @@ function normalizeStrapiPayload(raw: Record<string, unknown>): WebhookPayload {
   const entryId = String(entry?.id ?? entry?.documentId ?? "unknown");
   const recordId = entryId;
 
-  // Derive collection from uid (e.g. "api::intranet-page.intranet-page" -> "intranet-pages")
+  // Derive collection from uid via config-driven UidCollectionMap.
+  // lookupCollection handles WARN logging for non-api:: and unknown UIDs.
+  // Requirements: 5.2, 5.3, 5.4, 5.5
   const uid = String(raw.uid ?? "");
-  let collection: string | undefined;
-  if (uid.startsWith("api::")) {
-    // "api::intranet-page.intranet-page" -> "intranet-page"
-    const contentType = uid.split("::")[1]?.split(".")[0] ?? "";
-    // Use explicit mapping for irregular plurals, fall back to appending "s"
-    collection = contentType
-      ? (STRAPI_UID_TO_COLLECTION[contentType] ?? `${contentType}s`)
-      : undefined;
-  }
+  const collection = lookupCollection(uidMap, uid);
 
   // Use entry's updatedAt/createdAt or current time
   const timestamp = String(
@@ -563,12 +564,9 @@ function normalizeStrapiPayload(raw: Record<string, unknown>): WebhookPayload {
 /**
  * Process a webhook event by routing it through the WebhookEventRouter.
  *
- * Creates the appropriate adapter based on source type, builds the router
- * with S3 and Bedrock clients, and routes the event for processing.
- *
+ * Creates a ConfigurableStrapiAdapter using config-driven collection definitions.
  * The `source` path parameter doubles as the collection identifier for Strapi
  * (e.g. POST /webhook/articles, POST /webhook/intranet-pages).
- * Falls back to "articles" if source is just "strapi".
  *
  * Requirements: 6.4, 6.5
  */
@@ -596,13 +594,29 @@ async function processWebhookEvent(
   // Retrieve data source secrets (cached)
   const secrets = await getDataSourceSecrets();
 
-  // Resolve collection: prefer payload.collection (from Strapi uid), then source path, fallback to "articles"
+  // Resolve collection: prefer payload.collection (from Strapi uid lookup),
+  // then source path if it matches a configured collection, else first configured name.
+  // Requirements: 5.3
+  const knownCollections = config.strapi.collections.map((c) => c.name);
   const collection =
     payload.collection ??
-    (STRAPI_COLLECTIONS.includes(source) ? source : "articles");
+    (knownCollections.includes(source) ? source : (knownCollections[0] ?? ""));
 
-  // Create adapter for the resolved collection
-  const adapter = createAdapter("strapi", collection, secrets);
+  // Build adapter from config (Req 5.2, 6.1)
+  const adapterConfig: ConfigurableStrapiAdapterConfig = {
+    baseUrl: config.strapi.baseUrl,
+    apiToken:
+      secrets.apiToken ?? secrets.strapiToken ?? config.strapi.apiToken ?? "",
+    frontendBaseUrl:
+      config.strapi.frontendBaseUrl ??
+      secrets.frontendBaseUrl ??
+      process.env.FRONTEND_BASE_URL,
+    collections: config.strapi.collections,
+  };
+  const adapter = new ConfigurableStrapiAdapter(
+    adapterConfig,
+    new RetryHttpClient(),
+  );
 
   // Create infrastructure clients
   const s3Client = new S3ContentClient({ bucketName });
