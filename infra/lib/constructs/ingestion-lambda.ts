@@ -175,6 +175,24 @@ export class IngestionLambda extends Construct {
         minify: true,
         sourceMap: true,
         externalModules: [],
+        // Copy config files into the bundle so require('../../config/*.json')
+        // resolves correctly inside the Lambda zip.
+        commandHooks: {
+          beforeBundling(): string[] {
+            return [];
+          },
+          beforeInstall(): string[] {
+            return [];
+          },
+          afterBundling(inputDir: string, outputDir: string): string[] {
+            return [
+              `mkdir -p ${outputDir}/config`,
+              `cp ${inputDir}/config/deployment.json ${outputDir}/config/deployment.json`,
+              // collections.json is optional — copy only if it exists
+              `[ -f ${inputDir}/config/collections.json ] && cp ${inputDir}/config/collections.json ${outputDir}/config/collections.json || true`,
+            ];
+          },
+        },
       },
     });
 
