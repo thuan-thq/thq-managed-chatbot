@@ -64,7 +64,28 @@ const config: ClientConfig = ConfigLoader.loadWithCollections(
   deploymentConfig,
   collectionsOverride,
 );
-const uidMap = buildUidCollectionMap(config.strapi.collections);
+
+// Build a per-source map: sourceId -> { adapter config, uidMap }
+// This supports multiple data sources declared in dataSources[].
+const sourceAdapterConfigs = new Map<
+  string,
+  {
+    ds: (typeof config.dataSources)[number];
+    uidMap: ReturnType<typeof buildUidCollectionMap>;
+  }
+>();
+for (const ds of config.dataSources) {
+  sourceAdapterConfigs.set(ds.id, {
+    ds,
+    uidMap: buildUidCollectionMap(ds.collections),
+  });
+}
+
+// Flattened UID map across all sources (for webhook routing without a source ID).
+// When two sources share a UID, the last one wins — document this as a known limitation.
+const globalUidMap = buildUidCollectionMap(
+  config.dataSources.flatMap((ds) => ds.collections),
+);
 
 // ---- API Gateway v2 event type (HTTP API payload format 2.0) ----
 
@@ -112,51 +133,61 @@ interface WebhookPayload {
 // ---- Secrets cache ----
 
 const secretsClient = new SecretsManagerClient({});
-let cachedWebhookSecret: string | null = null;
-let cachedDataSourceSecrets: Record<string, string> | null = null;
+const cachedDataSourceSecrets = new Map<string, Record<string, string>>();
 
 /**
- * Retrieves the webhook secret from Secrets Manager.
+ * Retrieves the webhook secret for a given data source from Secrets Manager.
+ * Falls back to the first data source when sourceId is not provided.
  * Caches the result for the lifetime of the Lambda execution context.
  */
-async function getWebhookSecret(): Promise<string> {
-  if (cachedWebhookSecret) {
-    return cachedWebhookSecret;
+async function getWebhookSecret(sourceId?: string): Promise<string> {
+  const id = sourceId ?? config.dataSources[0]?.id ?? "default";
+
+  // Check cache first
+  const cached = cachedDataSourceSecrets.get(id);
+  if (cached?.webhookSecret) {
+    return cached.webhookSecret;
   }
 
-  const secrets = await getDataSourceSecrets();
-  cachedWebhookSecret = secrets.webhookSecret;
-
-  if (!cachedWebhookSecret) {
-    throw new Error("webhookSecret field missing from secret");
+  const secrets = await getDataSourceSecrets(id);
+  if (!secrets.webhookSecret) {
+    throw new Error(
+      `webhookSecret field missing from secret for source: ${id}`,
+    );
   }
 
-  return cachedWebhookSecret;
+  return secrets.webhookSecret;
 }
 
 /**
- * Retrieves the full data source secrets object from Secrets Manager.
- * Caches the result for the lifetime of the Lambda execution context.
- * Contains: webhookSecret, baseUrl, apiToken, collection, etc.
+ * Retrieves the secrets object for a given data source from Secrets Manager.
+ * Results are cached per source ID for the lifetime of the Lambda execution context.
+ * Contains: webhookSecret, apiToken, frontendBaseUrl, etc.
  */
-async function getDataSourceSecrets(): Promise<Record<string, string>> {
-  if (cachedDataSourceSecrets) {
-    return cachedDataSourceSecrets;
+async function getDataSourceSecrets(
+  sourceId: string,
+): Promise<Record<string, string>> {
+  const cached = cachedDataSourceSecrets.get(sourceId);
+  if (cached) {
+    return cached;
   }
 
   const clientId = process.env.CLIENT_ID ?? "";
-  const secretId = `/${clientId}/secrets/datasource`;
+  const secretId = `/${clientId}/secrets/datasource/${sourceId}`;
 
   const response = await secretsClient.send(
     new GetSecretValueCommand({ SecretId: secretId }),
   );
 
   if (!response.SecretString) {
-    throw new Error("Data source secret not found in Secrets Manager");
+    throw new Error(
+      `Data source secret not found in Secrets Manager: ${secretId}`,
+    );
   }
 
-  cachedDataSourceSecrets = JSON.parse(response.SecretString);
-  return cachedDataSourceSecrets!;
+  const parsed = JSON.parse(response.SecretString) as Record<string, string>;
+  cachedDataSourceSecrets.set(sourceId, parsed);
+  return parsed;
 }
 
 // ---- Main handler ----
@@ -235,7 +266,7 @@ function isDirectInvocation(
 /**
  * Handle a full sync direct invocation.
  *
- * Derives the list of collections exclusively from config.strapi.collections
+ * Derives the list of collections exclusively from config.dataSources[].collections
  * (Req 6.1). Returns a zero FullSyncResult immediately when no collections
  * are configured (Req 6.2).
  *
@@ -251,11 +282,13 @@ async function handleFullSync(
   const knowledgeBaseId = process.env.KNOWLEDGE_BASE_ID ?? "";
   const dataSourceId = process.env.DATA_SOURCE_ID ?? "";
 
-  // Derive collections exclusively from config (Req 6.1)
-  const collections = config.strapi.collections.map((c) => c.name);
+  // Derive all collections across all configured data sources (Req 6.1)
+  const allCollections = config.dataSources.flatMap((ds) =>
+    ds.collections.map((c) => ({ sourceId: ds.id, collectionName: c.name })),
+  );
 
   // Req 6.2: empty collections — return immediately with zero result
-  if (collections.length === 0) {
+  if (allCollections.length === 0) {
     console.log(
       JSON.stringify({
         level: "INFO",
@@ -271,102 +304,102 @@ async function handleFullSync(
     };
   }
 
-  // Retrieve data source credentials from Secrets Manager
-  const secretId = `/${clientId}/secrets/datasource`;
-  const secretResponse = await secretsClient.send(
-    new GetSecretValueCommand({ SecretId: secretId }),
-  );
-
-  if (!secretResponse.SecretString) {
-    throw new Error("Data source secret not found in Secrets Manager");
-  }
-
-  const secrets = JSON.parse(secretResponse.SecretString) as Record<
-    string,
-    string
-  >;
-
   console.log(
     JSON.stringify({
       level: "INFO",
       message: "Full sync triggered",
       sourceType,
-      collections,
+      sources: config.dataSources.map((ds) => ds.id),
       clientId,
     }),
   );
 
-  // Build a single shared ConfigurableStrapiAdapter for all collections.
-  // Secrets supply the runtime API token; config supplies structure.
-  const adapterConfig: ConfigurableStrapiAdapterConfig = {
-    baseUrl: config.strapi.baseUrl,
-    apiToken:
-      secrets.apiToken ?? secrets.strapiToken ?? config.strapi.apiToken ?? "",
-    frontendBaseUrl:
-      config.strapi.frontendBaseUrl ??
-      secrets.frontendBaseUrl ??
-      process.env.FRONTEND_BASE_URL,
-    collections: config.strapi.collections,
-  };
-  const adapter = new ConfigurableStrapiAdapter(
-    adapterConfig,
-    new RetryHttpClient(),
-  );
-
-  // Run sync for each collection, aggregating results (Req 6.3, 6.4)
   let totalRecordsProcessed = 0;
   const allErrors: string[] = [];
   let lastIngestionJobId: string | undefined;
   let anyResumed = false;
 
-  for (const collection of collections) {
-    console.log(
-      JSON.stringify({
-        level: "INFO",
-        message: "Starting sync for collection",
-        sourceType,
-        collection,
-        clientId,
-      }),
+  // Run sync per data source, then per collection within each source
+  for (const ds of config.dataSources) {
+    // Retrieve per-source secrets from Secrets Manager
+    const secretId = `/${clientId}/secrets/datasource/${ds.id}`;
+    const secretResponse = await secretsClient.send(
+      new GetSecretValueCommand({ SecretId: secretId }),
     );
 
-    // Create pipeline dependencies
-    const s3Client = new S3ContentClient({ bucketName });
-    const syncStateClient = new SyncStateClient({ tableName, clientId });
-    const bedrockClient = new BedrockSyncClient({
-      knowledgeBaseId,
-      dataSourceId,
-    });
+    if (!secretResponse.SecretString) {
+      throw new Error(
+        `Data source secret not found in Secrets Manager: ${secretId}`,
+      );
+    }
 
-    // Build and execute pipeline (use collection as the sync state key)
-    const pipeline = new FullSyncPipeline(
-      adapter,
-      s3Client,
-      syncStateClient,
-      bedrockClient,
-      { sourceType: collection, clientId },
+    const secrets = JSON.parse(secretResponse.SecretString) as Record<
+      string,
+      string
+    >;
+
+    const adapterConfig: ConfigurableStrapiAdapterConfig = {
+      baseUrl: ds.apiEndpoint,
+      apiToken: secrets.apiToken ?? secrets.strapiToken ?? ds.apiToken ?? "",
+      frontendBaseUrl:
+        ds.frontendBaseUrl ??
+        secrets.frontendBaseUrl ??
+        process.env.FRONTEND_BASE_URL,
+      collections: ds.collections,
+    };
+    const adapter = new ConfigurableStrapiAdapter(
+      adapterConfig,
+      new RetryHttpClient(),
     );
 
-    const result = await pipeline.execute();
-    totalRecordsProcessed += result.recordsProcessed;
-    allErrors.push(...result.errors);
-    if (result.ingestionJobId) {
-      lastIngestionJobId = result.ingestionJobId;
-    }
-    if (result.resumed) {
-      anyResumed = true;
-    }
-
-    if (!result.success) {
-      // Req 6.3: log WARN and continue with remaining collections
+    for (const collection of ds.collections.map((c) => c.name)) {
       console.log(
         JSON.stringify({
-          level: "WARN",
-          message: "Sync failed for collection - continuing with remaining",
+          level: "INFO",
+          message: "Starting sync for collection",
+          sourceId: ds.id,
+          sourceType,
           collection,
-          errors: result.errors.length,
+          clientId,
         }),
       );
+
+      const s3Client = new S3ContentClient({ bucketName });
+      const syncStateClient = new SyncStateClient({ tableName, clientId });
+      const bedrockClient = new BedrockSyncClient({
+        knowledgeBaseId,
+        dataSourceId,
+      });
+
+      const pipeline = new FullSyncPipeline(
+        adapter,
+        s3Client,
+        syncStateClient,
+        bedrockClient,
+        { sourceType: collection, collectionName: collection, clientId },
+      );
+
+      const result = await pipeline.execute();
+      totalRecordsProcessed += result.recordsProcessed;
+      allErrors.push(...result.errors);
+      if (result.ingestionJobId) {
+        lastIngestionJobId = result.ingestionJobId;
+      }
+      if (result.resumed) {
+        anyResumed = true;
+      }
+
+      if (!result.success) {
+        console.log(
+          JSON.stringify({
+            level: "WARN",
+            message: "Sync failed for collection - continuing with remaining",
+            sourceId: ds.id,
+            collection,
+            errors: result.errors.length,
+          }),
+        );
+      }
     }
   }
 
@@ -417,9 +450,17 @@ async function handleWebhook(
     return jsonResponse(401, { error: "Unauthorized: missing secret" });
   }
 
+  // Resolve which data source this webhook belongs to early,
+  // so we validate against the correct source's webhookSecret.
+  // At this point we only have the URL `source` param (collection name or source id).
+  const resolvedDsForAuth =
+    config.dataSources.find(
+      (ds) => ds.id === source || ds.collections.some((c) => c.name === source),
+    ) ?? config.dataSources[0];
+
   let webhookSecret: string;
   try {
-    webhookSecret = await getWebhookSecret();
+    webhookSecret = await getWebhookSecret(resolvedDsForAuth.id);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Failed to retrieve webhook secret:", message);
@@ -562,7 +603,7 @@ function normalizeStrapiPayload(raw: Record<string, unknown>): WebhookPayload {
   // lookupCollection handles WARN logging for non-api:: and unknown UIDs.
   // Requirements: 5.2, 5.3, 5.4, 5.5
   const uid = String(raw.uid ?? "");
-  const collection = lookupCollection(uidMap, uid);
+  const collection = lookupCollection(globalUidMap, uid);
 
   // Use entry's updatedAt/createdAt or current time
   const timestamp = String(
@@ -608,27 +649,33 @@ async function processWebhookEvent(
   const knowledgeBaseId = process.env.KNOWLEDGE_BASE_ID ?? "";
   const dataSourceId = process.env.DATA_SOURCE_ID ?? "";
 
-  // Retrieve data source secrets (cached)
-  const secrets = await getDataSourceSecrets();
+  // Resolve which data source owns this collection/webhook source.
+  // Try to find a source whose collections include the payload or source name,
+  // then fall back to the first configured source.
+  const resolvedDs =
+    config.dataSources.find((ds) =>
+      ds.collections.some((c) => c.name === (payload.collection ?? source)),
+    ) ?? config.dataSources[0];
 
-  // Resolve collection: prefer payload.collection (from Strapi uid lookup),
-  // then source path if it matches a configured collection, else first configured name.
-  // Requirements: 5.3
-  const knownCollections = config.strapi.collections.map((c) => c.name);
+  // Retrieve per-source secrets (cached by source id)
+  const secrets = await getDataSourceSecrets(resolvedDs.id);
+
+  // Resolve collection within the chosen source
+  const knownCollections = resolvedDs.collections.map((c) => c.name);
   const collection =
     payload.collection ??
     (knownCollections.includes(source) ? source : (knownCollections[0] ?? ""));
 
   // Build adapter from config (Req 5.2, 6.1)
   const adapterConfig: ConfigurableStrapiAdapterConfig = {
-    baseUrl: config.strapi.baseUrl,
+    baseUrl: resolvedDs.apiEndpoint,
     apiToken:
-      secrets.apiToken ?? secrets.strapiToken ?? config.strapi.apiToken ?? "",
+      secrets.apiToken ?? secrets.strapiToken ?? resolvedDs.apiToken ?? "",
     frontendBaseUrl:
-      config.strapi.frontendBaseUrl ??
+      resolvedDs.frontendBaseUrl ??
       secrets.frontendBaseUrl ??
       process.env.FRONTEND_BASE_URL,
-    collections: config.strapi.collections,
+    collections: resolvedDs.collections,
   };
   const adapter = new ConfigurableStrapiAdapter(
     adapterConfig,

@@ -22,6 +22,8 @@ export interface WebhookPayload {
   recordId: string;
   timestamp: string;
   data?: Record<string, unknown>;
+  /** Collection name, used to route fetchById to the correct Strapi endpoint. */
+  collection?: string;
 }
 
 /** Configuration for the event router. */
@@ -116,7 +118,10 @@ export class WebhookEventRouter {
     let record = null;
 
     for (let attempt = 1; attempt <= MAX_FETCH_RETRIES; attempt++) {
-      record = await this.adapter.fetchById(payload.recordId);
+      record = await this.adapter.fetchById(
+        payload.recordId,
+        payload.collection ?? this.config.sourceType,
+      );
       if (record) break;
 
       if (attempt < MAX_FETCH_RETRIES) {

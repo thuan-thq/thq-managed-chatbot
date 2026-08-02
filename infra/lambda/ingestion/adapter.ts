@@ -28,23 +28,29 @@ export interface DataSourceAdapter {
    * Lists content records from the data source with cursor-based pagination.
    *
    * @param pagination - Page size and optional cursor for the next page
+   * @param collectionName - The collection to list (required for multi-collection adapters)
    * @returns A paged result containing ContentRecord items
    *
    * Validates: Requirements 5.1, 5.4
    */
   listContent(
     pagination: PaginationParams,
+    collectionName?: string,
   ): Promise<PagedResult<ContentRecord>>;
 
   /**
    * Fetches a single content record by its unique identifier.
    *
    * @param recordId - The unique identifier of the record to fetch
+   * @param collectionName - The collection to fetch from (required for multi-collection adapters)
    * @returns The ContentRecord if found, or null if not found
    *
    * Validates: Requirement 5.1
    */
-  fetchById(recordId: string): Promise<ContentRecord | null>;
+  fetchById(
+    recordId: string,
+    collectionName?: string,
+  ): Promise<ContentRecord | null>;
 
   /**
    * Detects changes in the data source since the given checkpoint.

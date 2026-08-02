@@ -155,18 +155,20 @@ export interface StrapiCollectionConfig {
   urlPathTemplate?: string;
 }
 
-// ─── Strapi connection config ─────────────────────────────────────────────────
+// ─── Data source config ───────────────────────────────────────────────────────
 
 /**
- * Strapi connection details and collection declarations for one client.
- *
- * This is the canonical block for collection configuration in `ClientConfig`.
+ * Strapi connection details and collection declarations for one data source.
  *
  * Requirements: 1.1
  */
 export interface StrapiConfig {
+  /** Unique identifier for this data source (e.g. `"main-strapi"`). Used to route webhooks and secrets. */
+  id: string;
+  /** Discriminator — must be `"strapi"`. */
+  type: "strapi";
   /** Base URL of the Strapi instance (must start with `http://` or `https://`). */
-  baseUrl: string;
+  apiEndpoint: string;
   /** Strapi Bearer API token for authenticating REST API requests. */
   apiToken: string;
   /** Shared secret used to validate incoming Strapi webhooks. */
@@ -181,6 +183,12 @@ export interface StrapiConfig {
   /** Ordered list of Strapi collections to ingest (Req 1.1). */
   collections: StrapiCollectionConfig[];
 }
+
+/**
+ * Union of all supported data source config types.
+ * Extend with additional `type` variants as new sources are added.
+ */
+export type DataSourceConfig = StrapiConfig;
 
 // ─── Supporting config types ──────────────────────────────────────────────────
 
@@ -246,10 +254,11 @@ export interface ClientConfig {
   /** Minimum confidence threshold for knowledge base results (0–1). */
   confidenceThreshold: number;
   /**
-   * Canonical Strapi configuration block containing all collection declarations.
-   * This is the authoritative source for collection config (Req 1.1).
+   * Ordered list of data source configurations. Each entry describes one
+   * external system (e.g. a Strapi instance) and its collections.
+   * At least one entry is required.
    */
-  strapi: StrapiConfig;
+  dataSources: DataSourceConfig[];
   /** Session behaviour settings. */
   session: SessionConfig;
   /** API rate limiting settings. */

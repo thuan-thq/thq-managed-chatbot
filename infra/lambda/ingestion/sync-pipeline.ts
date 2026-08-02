@@ -27,6 +27,8 @@ import { BedrockSyncClient } from "./bedrock-client";
 export interface FullSyncPipelineConfig {
   /** The data source type identifier (e.g. "strapi"). */
   sourceType: string;
+  /** The collection name to sync (used when the adapter is multi-collection). */
+  collectionName: string;
   /** The client ID for this deployment. */
   clientId: string;
   /** Number of records per page (default 100). */
@@ -76,6 +78,7 @@ export class FullSyncPipeline {
     this.bedrockClient = bedrockClient;
     this.config = {
       sourceType: config.sourceType,
+      collectionName: config.collectionName,
       clientId: config.clientId,
       pageSize: config.pageSize ?? 100,
       progressInterval: config.progressInterval ?? 100,
@@ -136,10 +139,13 @@ export class FullSyncPipeline {
       let hasMore = true;
 
       while (hasMore) {
-        const page = await this.adapter.listContent({
-          pageSize: this.config.pageSize,
-          cursor,
-        });
+        const page = await this.adapter.listContent(
+          {
+            pageSize: this.config.pageSize,
+            cursor,
+          },
+          this.config.collectionName,
+        );
 
         // Update total on first page if available
         if (
