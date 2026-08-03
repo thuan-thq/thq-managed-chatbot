@@ -174,7 +174,7 @@ export class BedrockSyncClient {
       response = await this.client.send(command);
     } catch (error) {
       // Log structured JSON at ERROR level and re-throw (Requirement: 6.1)
-      console.error(
+      console.log(
         JSON.stringify({
           level: "ERROR",
           message: "IngestKnowledgeBaseDocuments API call failed",
@@ -208,7 +208,7 @@ export class BedrockSyncClient {
 
         // Log WARN for individual FAILED statuses (Requirement: 6.3)
         if (status === "FAILED") {
-          console.warn(
+          console.log(
             JSON.stringify({
               level: "WARN",
               message: "Document ingestion failed",
@@ -222,7 +222,7 @@ export class BedrockSyncClient {
       }
 
       // Synthesize FAILED result for missing entries (Requirement: 5.3)
-      console.warn(
+      console.log(
         JSON.stringify({
           level: "WARN",
           message: "Document ingestion failed",
@@ -297,7 +297,7 @@ export class BedrockSyncClient {
       response = await this.client.send(command);
     } catch (error) {
       // Log structured JSON at ERROR level and re-throw (Requirement: 6.2)
-      console.error(
+      console.log(
         JSON.stringify({
           level: "ERROR",
           message: "DeleteKnowledgeBaseDocuments API call failed",
@@ -340,7 +340,7 @@ export class BedrockSyncClient {
         }
 
         if (status === "FAILED") {
-          console.warn(
+          console.log(
             JSON.stringify({
               level: "WARN",
               message: "KB document deletion failed",
@@ -354,7 +354,7 @@ export class BedrockSyncClient {
       }
 
       // Synthesize FAILED result for missing entries (Requirement: 5.3)
-      console.warn(
+      console.log(
         JSON.stringify({
           level: "WARN",
           message: "KB document deletion failed",

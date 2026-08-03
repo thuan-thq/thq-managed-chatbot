@@ -5,7 +5,7 @@
   "confidenceThreshold": 0.3,
   "dataSource": {
     "type": "strapi",
-    "baseUrl": "https://cms.example.com",
+    "apiEndpoint": "https://cms.example.com",
     "apiToken": "your-api-token-here",
     "webhookSecret": "your-webhook-secret-here",
     "frontendBaseUrl": "https://staging.intranet.think-hq.com.au",

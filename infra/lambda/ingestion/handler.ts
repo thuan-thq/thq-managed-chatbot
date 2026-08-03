@@ -245,7 +245,16 @@ export async function handler(
     return jsonResponse(404, { error: "Not found" });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("Unhandled error:", message);
+    console.log(
+      JSON.stringify({
+        level: "ERROR",
+        event: "UNHANDLED_ERROR",
+        message,
+        path,
+        method,
+        timestamp: new Date().toISOString(),
+      }),
+    );
     return jsonResponse(500, { error: "Internal server error" });
   }
 }
@@ -463,7 +472,15 @@ async function handleWebhook(
     webhookSecret = await getWebhookSecret(resolvedDsForAuth.id);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("Failed to retrieve webhook secret:", message);
+    console.log(
+      JSON.stringify({
+        level: "ERROR",
+        event: "WEBHOOK_SECRET_RETRIEVAL_FAILED",
+        message: `Failed to retrieve webhook secret: ${message}`,
+        source,
+        timestamp: new Date().toISOString(),
+      }),
+    );
     return jsonResponse(500, { error: "Internal server error" });
   }
 
@@ -506,7 +523,16 @@ async function handleWebhook(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("Dedup check failed:", message);
+    console.log(
+      JSON.stringify({
+        level: "ERROR",
+        event: "WEBHOOK_DEDUP_CHECK_FAILED",
+        message: `Dedup check failed: ${message}`,
+        source,
+        eventId,
+        timestamp: new Date().toISOString(),
+      }),
+    );
     return jsonResponse(500, { error: "Internal server error" });
   }
 
@@ -540,7 +566,19 @@ async function handleWebhook(
     await processWebhookEvent(source, eventId, payload);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("Webhook processing failed:", message);
+    console.log(
+      JSON.stringify({
+        level: "ERROR",
+        event: "WEBHOOK_PROCESSING_FAILED",
+        source,
+        eventId,
+        webhookEvent: payload.event,
+        recordId: payload.recordId,
+        collection: payload.collection,
+        error: message,
+        timestamp: new Date().toISOString(),
+      }),
+    );
     // Do NOT record in dedup table on failure - allows retry
     return jsonResponse(500, { error: "Processing failed" });
   }
@@ -548,11 +586,35 @@ async function handleWebhook(
   // Step 4: Record successful processing in dedup table
   try {
     await recordProcessed(source, eventId);
+    console.log(
+      JSON.stringify({
+        level: "INFO",
+        event: "WEBHOOK_COMMITTED",
+        message: "Webhook event fully processed and dedup entry recorded",
+        source,
+        eventId,
+        webhookEvent: payload.event,
+        recordId: payload.recordId,
+        collection: payload.collection,
+        timestamp: new Date().toISOString(),
+      }),
+    );
   } catch (err) {
     // Log but don't fail - the event was processed successfully.
     // Worst case: the event might be reprocessed on retry (idempotent).
     const message = err instanceof Error ? err.message : String(err);
-    console.error("Failed to record dedup entry:", message);
+    console.log(
+      JSON.stringify({
+        level: "WARN",
+        event: "WEBHOOK_DEDUP_WRITE_FAILED",
+        message:
+          "Event processed but dedup entry write failed - may reprocess on retry",
+        source,
+        eventId,
+        error: message,
+        timestamp: new Date().toISOString(),
+      }),
+    );
   }
 
   return jsonResponse(200, {
@@ -660,11 +722,32 @@ async function processWebhookEvent(
   // Retrieve per-source secrets (cached by source id)
   const secrets = await getDataSourceSecrets(resolvedDs.id);
 
-  // Resolve collection within the chosen source
+  // Resolve collection within the chosen source.
+  // Only proceed if the collection is explicitly known — if neither the
+  // payload collection nor the URL source param matches a configured
+  // collection, skip the event entirely. Falling back to an arbitrary
+  // collection (e.g. knownCollections[0]) would corrupt a wrong collection.
   const knownCollections = resolvedDs.collections.map((c) => c.name);
   const collection =
     payload.collection ??
-    (knownCollections.includes(source) ? source : (knownCollections[0] ?? ""));
+    (knownCollections.includes(source) ? source : undefined);
+
+  if (!collection) {
+    console.log(
+      JSON.stringify({
+        level: "WARN",
+        event: "WEBHOOK_COLLECTION_UNKNOWN",
+        message:
+          "Webhook collection could not be resolved to a known collection - skipping upsert/delete",
+        source,
+        uid: (payload.data as Record<string, unknown> | undefined)?.uid,
+        payloadCollection: payload.collection,
+        knownCollections,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    return;
+  }
 
   // Build adapter from config (Req 5.2, 6.1)
   const adapterConfig: ConfigurableStrapiAdapterConfig = {
@@ -752,6 +835,13 @@ function extractEventId(rawBody: string): string | null {
 async function handleIngestRecord(
   _event: APIGatewayV2Event,
 ): Promise<LambdaResponse> {
+  console.log(
+    JSON.stringify({
+      level: "WARN",
+      message: "handleIngestRecord called but not yet implemented",
+      timestamp: new Date().toISOString(),
+    }),
+  );
   // TODO: Implement single record ingestion
   return jsonResponse(200, {
     message: "Record ingestion accepted",
@@ -766,6 +856,14 @@ async function handleDeleteRecord(
   _event: APIGatewayV2Event,
   recordId: string,
 ): Promise<LambdaResponse> {
+  console.log(
+    JSON.stringify({
+      level: "WARN",
+      message: "handleDeleteRecord called but not yet implemented",
+      recordId,
+      timestamp: new Date().toISOString(),
+    }),
+  );
   // TODO: Implement record deletion from S3 and trigger KB re-sync
   return jsonResponse(200, {
     message: `Record ${recordId} deletion accepted`,

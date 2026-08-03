@@ -48,7 +48,7 @@ export function lookupCollection(
   uid: string,
 ): string | undefined {
   if (!uid.startsWith("api::")) {
-    console.warn(
+    console.log(
       JSON.stringify({
         level: "WARN",
         message: "Skipping non-api:: Strapi uid - collection unknown",
@@ -60,7 +60,7 @@ export function lookupCollection(
 
   const name = map.get(uid);
   if (name === undefined) {
-    console.warn(
+    console.log(
       JSON.stringify({
         level: "WARN",
         message: "Unrecognised Strapi uid - collection unknown",

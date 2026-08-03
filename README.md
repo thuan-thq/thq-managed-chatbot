@@ -31,8 +31,9 @@ Chat Lambda:
   └── DynamoDB Sessions table
 
 Ingestion Lambda:
-  ├── Data Source Adapters (Strapi [articles, intranet-pages], Monday.com, Employment Hero)
-  ├── S3 Data Bucket (documents/ prefix → KB source)
+  ├── Data Source Adapters (Strapi, Monday.com, Employment Hero)
+  │   └── Each source has its own id, endpoint, credentials, and collections[]
+  ├── S3 Data Bucket (documents/{collection}/ prefix → KB source)
   ├── Bedrock KB Sync (start-ingestion-job)
   ├── DynamoDB Sync State
   └── DynamoDB Webhook Dedup table
@@ -54,44 +55,37 @@ aws-managed-chatbot/
 ├── infra/                        # CDK stack + Lambda handlers
 │   ├── bin/infra.ts              # CDK entry point
 │   ├── config/
-│   │   └── deployment.example.json   # Copy to deployment.json and fill in
+│   │   ├── deployment.example.json   # Copy to deployment.json and fill in
+│   │   └── collections.json          # Collection definitions (injected at build time)
 │   ├── lambda/
 │   │   ├── chat/                 # Chat Lambda source (Node.js 20)
-│   │   │   ├── index.ts          # Router (POST /chat, POST /session, GET /session/{id})
-│   │   │   ├── chat-handler.ts   # Bedrock retrieval + streaming
-│   │   │   ├── session-handler.ts    # Session creation
-│   │   │   └── session-validator.ts  # State machine + transitions
+│   │   │   ├── index.ts
+│   │   │   ├── chat-handler.ts
+│   │   │   ├── session-handler.ts
+│   │   │   └── session-validator.ts
 │   │   ├── ingestion/            # Ingestion Lambda source (Node.js 20)
 │   │   │   ├── handler.ts        # Router (webhooks, ingest, delete, full-sync)
 │   │   │   ├── adapter.ts        # DataSourceAdapter interface
-│   │   │   ├── types.ts          # ContentRecord, ChangeSet, etc.
-│   │   │   ├── strapi-adapter.ts # Strapi CMS adapter
-│   │   │   ├── monday-adapter.ts # Monday.com adapter
-│   │   │   ├── employment-hero-adapter.ts # Employment Hero adapter
-│   │   │   ├── http-client.ts    # RetryHttpClient (exponential backoff)
-│   │   │   ├── sync-pipeline.ts  # Full sync with pagination + progress
-│   │   │   ├── webhook-validator.ts  # HMAC signature validation
-│   │   │   ├── dedup-service.ts  # Webhook deduplication (DynamoDB)
-│   │   │   ├── event-router.ts   # Webhook event routing (create/update/delete)
-│   │   │   ├── s3-client.ts      # S3 content CRUD
-│   │   │   ├── dynamo-client.ts  # Sync state persistence
-│   │   │   └── bedrock-client.ts # Bedrock KB sync trigger
-│   │   └── admin/                # Admin Lambda source (Node.js 20)
-│   │       ├── index.ts          # Router (config CRUD, sync, analytics)
-│   │       ├── config-handler.ts # GET/PUT /admin/config
-│   │       ├── sync-handler.ts   # POST /admin/sync/trigger, GET /admin/sync-status
-│   │       ├── analytics-handler.ts  # GET /admin/analytics
-│   │       └── validation.ts     # Config schema validation
+│   │   │   ├── config-types.ts   # ClientConfig, DataSourceConfig, StrapiConfig
+│   │   │   ├── config-loader.ts  # Validates deployment.json at cold start
+│   │   │   ├── configurable-strapi-adapter.ts
+│   │   │   ├── monday-adapter.ts
+│   │   │   ├── employment-hero-adapter.ts
+│   │   │   ├── sync-pipeline.ts  # Full sync with pagination + resume
+│   │   │   ├── event-router.ts   # Webhook routing (create/update/delete)
+│   │   │   ├── uid-collection-map.ts # Strapi UID → collection name lookup
+│   │   │   └── ...               # http-client, s3-client, dynamo-client, etc.
+│   │   └── admin/
 │   ├── lib/
-│   │   ├── constructs/           # CDK constructs (one per resource group)
-│   │   ├── config/               # DeploymentConfig type + loader/validator
+│   │   ├── constructs/           # CDK constructs
+│   │   ├── config/               # DeploymentConfig type + CDK-side loader/validator
 │   │   └── managed-chatbot-stack.ts
-│   └── test/                     # Jest unit + CDK assertion tests
+│   └── test/
 └── app/                          # Next.js chat widget
     ├── src/
-    │   ├── components/           # ChatWidget, ShadowDomContainer, ErrorBoundary
-    │   └── lib/                  # session-client, sse-client, branding, types
-    └── .env.example              # All required env vars
+    │   ├── components/
+    │   └── lib/
+    └── .env.example
 ```
 
 ---
@@ -107,11 +101,9 @@ aws-managed-chatbot/
 
 ### Enable Bedrock Model Access
 
-Before deploying, request access to Claude in your AWS account:
-
 1. Open the AWS Console → **Amazon Bedrock** → **Model access** (ap-southeast-2)
 2. Enable **Anthropic Claude 3 Haiku** (`anthropic.claude-3-haiku-20240307-v1:0`)
-3. Wait for status to show **Access granted** (usually < 5 minutes)
+3. Wait for **Access granted** status (usually < 5 minutes)
 
 ---
 
@@ -130,18 +122,24 @@ cd ../app && npm install
 cp infra/config/deployment.example.json infra/config/deployment.json
 ```
 
-Edit `infra/config/deployment.json`:
+Edit `infra/config/deployment.json`. The top-level key is now `dataSources` — an array so you can connect multiple CMS instances:
 
 ```json
 {
   "clientId": "my-client",
   "region": "ap-southeast-2",
-  "dataSource": {
-    "type": "strapi",
-    "apiEndpoint": "https://cms.example.com",
-    "apiToken": "your-strapi-token",
-    "webhookSecret": "any-random-string-for-phase1"
-  },
+  "dataSources": [
+    {
+      "id": "main-strapi",
+      "type": "strapi",
+      "apiEndpoint": "https://cms.example.com",
+      "apiToken": "your-strapi-token",
+      "webhookSecret": "any-random-string",
+      "frontendBaseUrl": "https://www.example.com",
+      "pageSize": 100,
+      "collections": []
+    }
+  ],
   "session": {
     "duration": 30,
     "turnLimit": 50,
@@ -149,7 +147,7 @@ Edit `infra/config/deployment.json`:
   },
   "rateLimit": { "requestsPerMinute": 30 },
   "apiKeys": {
-    "appKey": "wk-your-widget-key",
+    "appKey": "wk-placeholder",
     "adminKey": "ak-your-admin-key"
   },
   "monitoring": {
@@ -159,29 +157,55 @@ Edit `infra/config/deployment.json`:
 }
 ```
 
+To add a second data source, append another entry to the `dataSources` array with a distinct `id`.
+
 **`clientId` rules:** lowercase alphanumeric + hyphens, 3–63 characters, must start and end with alphanumeric.
 
-### 3. Bootstrap CDK (first time only per account/region)
+### 3. Define collections
+
+Collections live in `infra/config/collections.json` (or inline in `dataSources[].collections`). The collections file is automatically merged into the first Strapi source at build time:
+
+```json
+[
+  {
+    "name": "articles",
+    "strapiUid": "api::article.article",
+    "markdownStrategy": "content-blocks",
+    "fieldMappings": {
+      "titleFields": ["title"],
+      "slugField": "slug",
+      "summaryField": "summary",
+      "contentBlocksField": "content_blocks",
+      "lastModifiedField": "updatedAt"
+    },
+    "urlPathTemplate": "/articles/{slug}"
+  }
+]
+```
+
+See `infra/config/collections.example.json` for examples of all three markdown strategies.
+
+### 4. Bootstrap CDK (first time only per account/region)
 
 ```bash
 cd infra && npx cdk bootstrap aws://ACCOUNT_ID/ap-southeast-2
 ```
 
-### 4. Deploy
+### 5. Deploy
 
 ```bash
 cd infra && npx cdk deploy
 ```
 
-The stack name will be `ManagedChatbot-{clientId}`. Deployment takes ~5–10 minutes, mostly for the Bedrock Knowledge Base.
+Stack name: `ManagedChatbot-{clientId}`. Deployment takes ~5–10 minutes (mostly the Bedrock KB).
 
-### 5. Configure the widget
+### 6. Configure the widget
 
 ```bash
 cp app/.env.example app/.env.local
 ```
 
-Edit `app/.env.local` — the critical field is the API endpoint from the CDK output:
+Edit `app/.env.local`:
 
 ```dotenv
 NEXT_PUBLIC_API_ENDPOINT=https://xxxx.execute-api.ap-southeast-2.amazonaws.com
@@ -190,7 +214,7 @@ NEXT_PUBLIC_WIDGET_TITLE=Chat Assistant
 NEXT_PUBLIC_WELCOME_MESSAGE=Hi! How can I help you today?
 ```
 
-### 6. Run the widget locally
+### 7. Run the widget locally
 
 ```bash
 cd app && npm run dev
@@ -210,51 +234,61 @@ cd infra && npm test
 cd app && npm test
 ```
 
-All 268 infra tests pass. No integration tests hit live AWS — those are covered in the runbook.
-
 ---
 
 ## Configuration Reference
 
-All fields in `deployment.json`:
+### `deployment.json` top-level fields
 
-| Field                         | Type   | Default  | Range / Notes                         |
-| ----------------------------- | ------ | -------- | ------------------------------------- |
-| `clientId`                    | string | required | 3–63 chars, `[a-z0-9-]`               |
-| `region`                      | string | required | Must be `ap-southeast-2`              |
-| `dataSource.type`             | enum   | required | `strapi`, `monday`, `employment-hero` |
-| `dataSource.apiEndpoint`      | string | required | Base URL of your CMS                  |
-| `dataSource.apiToken`         | string | required | Stored in Secrets Manager             |
-| `dataSource.webhookSecret`    | string | required | Stored in Secrets Manager             |
-| `dataSource.pageSize`         | number | 100      | 1–500                                 |
-| `session.duration`            | number | 30       | Minutes, 1–120                        |
-| `session.turnLimit`           | number | 50       | 1–500                                 |
-| `session.tokenBudget`         | number | 8000     | 1000–100000                           |
-| `session.retentionDays`       | number | 7        | 1–365                                 |
-| `rateLimit.requestsPerMinute` | number | 30       | 1–1000                                |
-| `apiKeys.appKey`              | string | required | Used in `x-api-key` header            |
-| `apiKeys.adminKey`            | string | required | Admin endpoints only                  |
-| `monitoring.budgetAmount`     | number | required | Monthly USD                           |
-| `monitoring.alarmEmail`       | string | required | Valid email                           |
+| Field                         | Type   | Default  | Notes                                       |
+| ----------------------------- | ------ | -------- | ------------------------------------------- |
+| `clientId`                    | string | required | 3–63 chars, `[a-z0-9-]`                     |
+| `region`                      | string | required | Must be `ap-southeast-2`                    |
+| `modelId`                     | string | optional | Bedrock inference profile ID                |
+| `confidenceThreshold`         | number | 0.3      | KB retrieval relevance cutoff (0–1)         |
+| `dataSources`                 | array  | required | At least one entry required                 |
+| `session.duration`            | number | 30       | Minutes, 1–120                              |
+| `session.turnLimit`           | number | 50       | 1–500                                       |
+| `session.tokenBudget`         | number | 8000     | 1000–100000                                 |
+| `session.retentionDays`       | number | 7        | 1–365                                       |
+| `rateLimit.requestsPerMinute` | number | 30       | 1–1000                                      |
+| `apiKeys.appKey`              | string | optional | Reserved for future auth — not enforced yet |
+| `apiKeys.adminKey`            | string | required | Admin endpoints only                        |
+| `monitoring.budgetAmount`     | number | required | Monthly USD                                 |
+| `monitoring.alarmEmail`       | string | required | Valid email                                 |
+
+### `dataSources[]` entry fields
+
+| Field             | Type   | Required | Notes                                                                     |
+| ----------------- | ------ | -------- | ------------------------------------------------------------------------- |
+| `id`              | string | yes      | Unique identifier, e.g. `"main-strapi"`. Used as the secret path segment. |
+| `type`            | enum   | yes      | `strapi`, `monday`, `employment-hero`                                     |
+| `apiEndpoint`     | string | yes      | Base URL of the data source                                               |
+| `apiToken`        | string | yes      | Stored in Secrets Manager at runtime                                      |
+| `webhookSecret`   | string | yes      | Stored in Secrets Manager at runtime                                      |
+| `frontendBaseUrl` | string | no       | Prepended to `urlPathTemplate` for `sourceUrl`                            |
+| `pageSize`        | number | no       | Default 100, max 500                                                      |
+| `collections`     | array  | yes      | Can be `[]` if using `collections.json`                                   |
 
 ---
 
 ## AWS Resources Deployed
 
-| Resource                     | Name pattern                                                    |
-| ---------------------------- | --------------------------------------------------------------- |
-| CloudFormation stack         | `ManagedChatbot-{clientId}`                                     |
-| HTTP API Gateway             | `{clientId}-chatbot-api`                                        |
-| Chat Lambda (512MB)          | `{clientId}-chat`                                               |
-| Ingestion Lambda             | `{clientId}-ingestion`                                          |
-| Admin Lambda (128MB)         | `{clientId}-admin`                                              |
-| DynamoDB Sessions table      | auto-named by CDK                                               |
-| DynamoDB Webhook Dedup table | auto-named by CDK                                               |
-| S3 data bucket               | `{clientId}-kb-data`                                            |
-| Bedrock Knowledge Base       | `{clientId}-knowledge-base`                                     |
-| Bedrock S3 Data Source       | `{clientId}-s3-data-source`                                     |
-| Parameter Store paths        | `/{clientId}/config/{ratelimits,session,datasource,monitoring}` |
-| Secrets Manager paths        | `/{clientId}/secrets/{api-keys,datasource}`                     |
+| Resource                     | Name / Path pattern                                                       |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| CloudFormation stack         | `ManagedChatbot-{clientId}`                                               |
+| HTTP API Gateway             | `{clientId}-chatbot-api`                                                  |
+| Chat Lambda (512MB)          | `{clientId}-chat`                                                         |
+| Ingestion Lambda (512MB)     | `{clientId}-ingestion`                                                    |
+| Admin Lambda (128MB)         | `{clientId}-admin`                                                        |
+| DynamoDB Sessions table      | auto-named by CDK                                                         |
+| DynamoDB Webhook Dedup table | auto-named by CDK                                                         |
+| S3 data bucket               | `{clientId}-kb-data`                                                      |
+| Bedrock Knowledge Base       | `{clientId}-knowledge-base`                                               |
+| Bedrock S3 Data Source       | `{clientId}-s3-data-source`                                               |
+| Parameter Store              | `/{clientId}/config/{ratelimits,session,datasource,monitoring}`           |
+| Secrets Manager — API keys   | `/{clientId}/secrets/api-keys`                                            |
+| Secrets Manager — per source | `/{clientId}/secrets/datasource/{sourceId}` (one per `dataSources` entry) |
 
 All resources have cost allocation tags: `ClientId`, `Project=managed-chatbot`, `ManagedBy=cdk`.
 
@@ -262,71 +296,63 @@ All resources have cost allocation tags: `ClientId`, `Project=managed-chatbot`, 
 
 ## Data Source Adapters
 
-The ingestion pipeline uses a plugin pattern with interchangeable adapters. Configure via `dataSource.type` in `deployment.json`.
+The ingestion pipeline uses a plugin pattern with interchangeable adapters. Configure via `type` in each `dataSources` entry.
 
-| Adapter         | `dataSource.type` | Auth Mechanism   | Change Detection        |
-| --------------- | ----------------- | ---------------- | ----------------------- |
-| Strapi CMS      | `strapi`          | Bearer API token | `updated_at` field      |
-| Monday.com      | `monday`          | API token header | `updated_at` comparison |
-| Employment Hero | `employment-hero` | Bearer API token | `updated_at` comparison |
+| Adapter         | `type`            | Auth             | Change Detection  |
+| --------------- | ----------------- | ---------------- | ----------------- |
+| Strapi CMS      | `strapi`          | Bearer API token | `updatedAt` field |
+| Monday.com      | `monday`          | API token header | `updatedAt` field |
+| Employment Hero | `employment-hero` | Bearer API token | `updatedAt` field |
 
-All adapters:
-
-- Produce `ContentRecord` format (recordId, contentBody, contentType, metadata, lastModified)
-- Support cursor-based pagination (configurable page size, default 100)
-- Retry HTTP failures 3x with exponential backoff (1s base, 10s max)
-- Skip invalid records and collect errors without halting
+Multiple Strapi instances are supported — add one entry per instance to `dataSources`, each with its own `id`, `apiEndpoint`, credentials, and `collections`.
 
 ### Strapi Collections
 
-The Strapi adapter syncs multiple collections from a single Strapi instance. Collections are managed in code (`STRAPI_COLLECTIONS` in `handler.ts`):
+Each Strapi data source entry declares its own `collections` array. Collections can be defined inline or in `infra/config/collections.json` (which is injected at build time). Each collection picks a `markdownStrategy`:
 
-| Collection        | Content Extraction                                                         |
-| ----------------- | -------------------------------------------------------------------------- |
-| `intranet-pages`  | Dynamic zone `content_blocks` - text extracted recursively from components |
-| `intranet-teams`  | Dynamic zone `content_blocks` - text extracted recursively from components |
-| `intranet-people` | Dynamic zone `content_blocks` - text extracted recursively from components |
+| Strategy         | When to use                                  | Required `fieldMappings`        |
+| ---------------- | -------------------------------------------- | ------------------------------- |
+| `content-blocks` | Collection uses a dynamic zone field         | `contentBlocksField`            |
+| `rich-text`      | Collection has a single rich-text body field | `richTextField`                 |
+| `flat-fields`    | Simple key/value collection (FAQs, glossary) | `flatFields` (array of strings) |
 
-For collections with dynamic zones, the adapter:
-
-- Populates `content_blocks` via Strapi REST API `populate` params
-- Recursively extracts text from components: `DynamicTextBlockComponent`, `DynamicAccordionComponent`, `DynamicChangelingTextBlockComponent`, `Dynamic5050TextNImageComponent`, `DynamicDoubleTextBlockComponent`, and others
-- Composes the final content body from name/title, summary, and extracted block text
-
-A full sync always syncs all collections sequentially.
+The `strapiUid` field (e.g. `api::article.article`) is used by the webhook handler to route incoming Strapi events to the correct collection without relying on the URL path.
 
 ---
 
 ## Ingestion Modes
 
-| Mode           | Trigger                          | Scope                        |
-| -------------- | -------------------------------- | ---------------------------- |
-| Full Sync      | Direct Lambda invocation / admin | All collections sequentially |
-| Webhook (live) | `POST /webhook/{collection}`     | Single record                |
-| Manual upsert  | `POST /ingest/record`            | Single record                |
-| Manual delete  | `DELETE /ingest/record/{id}`     | Single record                |
+| Mode           | Trigger                              | Scope                             |
+| -------------- | ------------------------------------ | --------------------------------- |
+| Full sync      | Direct Lambda invocation / admin API | All sources and collections       |
+| Webhook (live) | `POST /webhook/{collectionName}`     | Single record, auto-routes by UID |
+| Manual upsert  | `POST /ingest/record`                | Single record                     |
+| Manual delete  | `DELETE /ingest/record/{id}`         | Single record                     |
 
-Full sync persists progress to DynamoDB and resumes from the last checkpoint on interruption.
+Full sync persists progress to DynamoDB per collection and resumes from the last checkpoint on interruption.
 
 ### Full Sync Invocation
 
 ```bash
-# Syncs all Strapi collections (intranet-pages, intranet-teams, intranet-people)
-aws lambda invoke --function-name "${CLIENT_ID}-ingestion" \
+aws lambda invoke \
+  --function-name "${CLIENT_ID}-ingestion" \
+  --region ap-southeast-2 \
   --payload '{"type":"full-sync"}' \
   --cli-binary-format raw-in-base64-out \
   /tmp/sync-result.json
+cat /tmp/sync-result.json | jq .
 ```
 
-### Webhook Collection Routing
+This syncs all collections across all configured data sources sequentially.
 
-Webhooks use the `{source}` path parameter to identify the collection:
+### Webhook Routing
 
-```bash
-POST /webhook/intranet-pages   # webhook for intranet-pages collection
-POST /webhook/intranet-teams   # webhook for intranet-teams collection
-POST /webhook/intranet-people  # webhook for intranet-people collection
-```
+Webhooks arrive at `POST /webhook/{source}`. The `{source}` value can be:
+
+- A collection name (e.g. `intranet-pages`) — the handler resolves the Strapi UID from the payload and routes to the matching source
+- A data source `id` (e.g. `main-strapi`) — the handler uses the first matching collection
+
+The webhook secret is validated per data source — each source uses its own secret stored at `/{clientId}/secrets/datasource/{sourceId}`.
 
 ---
 
@@ -336,4 +362,4 @@ POST /webhook/intranet-people  # webhook for intranet-people collection
 cd infra && npx cdk destroy
 ```
 
-> **Note:** The S3 bucket uses `RemovalPolicy.DESTROY` so it will be deleted with the stack. DynamoDB tables also use destroy policy. If you've changed these to RETAIN, you'll need to delete them manually after stack deletion.
+> The S3 bucket and DynamoDB tables use `RemovalPolicy.DESTROY` and will be deleted with the stack.

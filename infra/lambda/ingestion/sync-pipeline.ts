@@ -167,7 +167,7 @@ export class FullSyncPipeline {
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
             errors.push(`${record.recordId}: ${message}`);
-            console.error(
+            console.log(
               JSON.stringify({
                 level: "ERROR",
                 message: "Failed to persist record",
@@ -213,7 +213,7 @@ export class FullSyncPipeline {
             await this.s3Client.deleteDocument("prune", key);
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
-            console.error(
+            console.log(
               JSON.stringify({
                 level: "ERROR",
                 message: "Failed to prune orphaned S3 object",
@@ -243,7 +243,7 @@ export class FullSyncPipeline {
             );
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
-            console.error(
+            console.log(
               JSON.stringify({
                 level: "ERROR",
                 message: "Failed to prune orphaned KB documents",
@@ -297,7 +297,7 @@ export class FullSyncPipeline {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
 
-      console.error(
+      console.log(
         JSON.stringify({
           level: "ERROR",
           message: "Full sync failed",
