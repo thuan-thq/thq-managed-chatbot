@@ -7,10 +7,6 @@ dist/
 # CDK
 cdk.out/
 
-# Deployment config with secrets
-config/deployment.json
-config/collections.json
-
 # IDE
 .idea/
 *.swp

@@ -1,0 +1,35 @@
+{
+  "clientId": "thq-managed-chatbot",
+  "region": "ap-southeast-2",
+  "modelId": "au.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "confidenceThreshold": 0.3,
+  "dataSources": [
+    {
+      "id": "main-strapi",
+      "type": "strapi",
+      "apiEndpoint": "https://api.think-hq.com.au",
+      "apiToken": "4ff12b2a1494f2dfffa0d2dcaf2ac628993cb87392faef4c2673f38bc93d1b45353f75c710af9055ffb367bb121afddd70c6fb80c893d9d2074032425c36be8c1bf3d064ba4fff6f3af5e2746af0cd233d652aee0980f10d51d4c03b57b20ca1677ae69976142e1f78fe4f18bab3fc592db2de30697c8a8a3789f01e971365c1",
+      "webhookSecret": "ab2f28709bc448ffd6c9c41f0b0bb5d9890268b628b59b2f1141f2d6c2de33da",
+      "frontendBaseUrl": "https://think-hq.com.au",
+      "pageSize": 100,
+      "collections": []
+    }
+  ],
+  "session": {
+    "duration": 30,
+    "turnLimit": 50,
+    "tokenBudget": 8000,
+    "retentionDays": 7
+  },
+  "rateLimit": {
+    "requestsPerMinute": 30
+  },
+  "apiKeys": {
+    "appKey": "f5e9671580ee7cf422a32bff71ac6a1c84f175da9a34cff32de40befb3ce8c70",
+    "adminKey": "c559a2836564d1afa63711c1e50148d8835ebe74ad97012edb529ca6b71d04da"
+  },
+  "monitoring": {
+    "budgetAmount": 50,
+    "alarmEmail": "alerts@example.com"
+  }
+}
