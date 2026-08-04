@@ -965,14 +965,17 @@ function convertSpecialtyBlock(block: ContentBlock): string {
   // Lives outside the DynamicZone — uses specialtyBlock[] array shape
   const specialtyBlock = block["specialtyBlock"] as
     | Array<{
-        title?: string;
-        description?: string;
-        textStabilGrotesk?: string;
-        textFautive?: string;
-        linksTitle?: string;
-        url?: string;
-        ctaTitle?: string;
-        ctaUrl?: string;
+        title?: string | null;
+        subTitle?: string | null;
+        description?: string | null;
+        textStabilGrotesk?: string | null;
+        textFautive?: string | null;
+        linksTitle?: string | null;
+        url?: string | null;
+        target_blank?: boolean | null;
+        ctaTitle?: string | null;
+        ctaUrl?: string | null;
+        cta_target_blank?: boolean | null;
         certifications?: {
           data: Array<{ attributes?: { slug?: string } }>;
         };
@@ -994,8 +997,9 @@ function convertSpecialtyBlock(block: ContentBlock): string {
       parts.push(`### ${item.title}`);
     }
 
-    if (typeof item.description === "string" && item.description.length > 0) {
-      parts.push(item.description);
+    // subTitle is a supporting tagline shown under the title — plain line, no heading marker
+    if (typeof item.subTitle === "string" && item.subTitle.length > 0) {
+      parts.push(item.subTitle);
     }
 
     // textStabilGrotesk and textFautive are two font-styled portions of a
@@ -1012,6 +1016,10 @@ function convertSpecialtyBlock(block: ContentBlock): string {
     }
     if (richParts.length > 0) {
       parts.push(richParts.join(" "));
+    }
+
+    if (typeof item.description === "string" && item.description.length > 0) {
+      parts.push(cleanMarkdownText(item.description));
     }
 
     if (
@@ -1044,11 +1052,11 @@ function convertSpecialtyBlock(block: ContentBlock): string {
     }
 
     if (parts.length > 0) {
-      sections.push(parts.join("\n"));
+      sections.push(parts.join("\n\n"));
     }
   }
 
-  return sections.join("\n\n");
+  return sections.join("\n\n---\n\n");
 }
 
 // ─── Links ───────────────────────────────────────────────────────────────────
