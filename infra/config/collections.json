@@ -275,107 +275,6 @@
     }
   },
   {
-    "name": "resources",
-    "strapiUid": "api::resource.resource",
-    "markdownStrategy": "content-blocks",
-    "fieldMappings": {
-      "titleFields": ["name", "title"],
-      "slugField": "slug",
-      "summaryField": "summary",
-      "richTextField": "body",
-      "contentBlocksField": "components",
-      "lastModifiedField": "updatedAt"
-    },
-    "urlPathTemplate": "/resources/{slug}",
-    "populate": {
-      "fields": [
-        { "key": "populate[title][populate]", "value": "*" },
-        { "key": "populate[authorPhoto][populate]", "value": "*" },
-        { "key": "populate[seo][populate]", "value": "*" },
-        { "key": "populate[portraitThumbnail][populate]", "value": "*" },
-        { "key": "populate[featuredThumbnail][populate]", "value": "*" },
-        { "key": "populate[headerImage][populate]", "value": "*" },
-        { "key": "populate[squareThumbnail][populate]", "value": "*" },
-        {
-          "key": "populate[components][on][dynamic.multicultural-map][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.text-and-image][populate]",
-          "value": "image"
-        },
-        {
-          "key": "populate[components][on][dynamic.gallery][populate][items][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.text-quote-block][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.case-study-listing][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.people-listing][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.text-and-cta-block][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.news-listing][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.clients-logo][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.shuffled-photo][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.image-and-cta-block][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.text-block][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.double-text-block][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.job-listing][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.accordion][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.testimonial][populate][title][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.testimonial][populate][quotes][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.values-block][populate][title][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.values-block][populate][values][populate]",
-          "value": "*"
-        }
-      ]
-    }
-  },
-  {
     "name": "case-studies",
     "strapiUid": "api::case-study.case-study",
     "markdownStrategy": "content-blocks",
@@ -421,51 +320,6 @@
         },
         {
           "key": "populate[components][on][dynamic.double-text-block][populate]",
-          "value": "*"
-        }
-      ]
-    }
-  },
-  {
-    "name": "disciplines",
-    "strapiUid": "api::discipline.discipline",
-    "markdownStrategy": "content-blocks",
-    "fieldMappings": {
-      "titleFields": ["name"],
-      "slugField": "slug",
-      "summaryField": "body",
-      "contentBlocksField": "components",
-      "lastModifiedField": "updatedAt"
-    },
-    "urlPathTemplate": "/services/{slug}",
-    "populate": {
-      "fields": [
-        { "key": "populate[seo][populate]", "value": "*" },
-        { "key": "populate[title][populate]", "value": "*" },
-        { "key": "populate[service_areas][populate]", "value": "*" },
-        { "key": "populate[partnerships][populate]", "value": "*" },
-        {
-          "key": "populate[components][on][dynamic.text-and-image][populate]",
-          "value": "image"
-        },
-        {
-          "key": "populate[components][on][dynamic.gallery][populate][items][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.text-quote-block][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.accordion][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.e-newsletter-form][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.advisory-panel][populate]",
           "value": "*"
         }
       ]
@@ -519,23 +373,6 @@
     }
   },
   {
-    "name": "staffs",
-    "strapiUid": "api::staff.staff",
-    "markdownStrategy": "flat-fields",
-    "fieldMappings": {
-      "titleFields": ["name"],
-      "flatFields": ["name", "title", "tag", "linkedin"],
-      "lastModifiedField": "updatedAt"
-    },
-    "populate": {
-      "fields": [
-        { "key": "populate[image][populate]", "value": "*" },
-        { "key": "populate[second_image][populate]", "value": "*" },
-        { "key": "populate[discipline][populate]", "value": "*" }
-      ]
-    }
-  },
-  {
     "name": "clients",
     "strapiUid": "api::client.client",
     "markdownStrategy": "flat-fields",
@@ -546,20 +383,6 @@
     },
     "populate": {
       "fields": [{ "key": "populate[logo]", "value": "*" }]
-    }
-  },
-  {
-    "name": "forms",
-    "strapiUid": "api::form.form",
-    "markdownStrategy": "flat-fields",
-    "fieldMappings": {
-      "titleFields": ["slug"],
-      "slugField": "slug",
-      "flatFields": ["slug", "submit_label"],
-      "lastModifiedField": "updatedAt"
-    },
-    "populate": {
-      "fields": [{ "key": "populate[items][populate]", "value": "*" }]
     }
   }
 ]
