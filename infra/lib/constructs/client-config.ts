@@ -18,12 +18,12 @@ export interface ClientConfigProps {
  * Parameter Store schema:
  * - /{clientId}/config/ratelimits   → JSON: RateLimitConfig
  * - /{clientId}/config/session      → JSON: SessionConfig
- * - /{clientId}/config/datasource   → JSON: DataSourceConfig
+ * - /{clientId}/config/datasource   → JSON: DataSourceConfig[] (non-sensitive metadata)
  * - /{clientId}/config/monitoring   → JSON: MonitoringConfig
  *
  * Secrets Manager schema:
- * - /{clientId}/secrets/api-keys    → JSON: { appKey, adminKey }
- * - /{clientId}/secrets/datasource  → JSON: { apiToken, webhookSecret }
+ * - /{clientId}/secrets/api-keys                  → JSON: { appKey, adminKey }
+ * - /{clientId}/secrets/datasource/{sourceId}     → JSON: { apiToken, webhookSecret, ... } per source
  */
 export class ClientConfig extends Construct {
   public readonly rateLimitsParameter: ssm.StringParameter;
@@ -31,6 +31,13 @@ export class ClientConfig extends Construct {
   public readonly dataSourceParameter: ssm.StringParameter;
   public readonly monitoringParameter: ssm.StringParameter;
   public readonly apiKeysSecret: secretsmanager.Secret;
+  /** One secret per data source, keyed by source id. */
+  public readonly dataSourceSecrets: Map<string, secretsmanager.Secret>;
+  /**
+   * @deprecated Use dataSourceSecrets instead.
+   * Points to the first data source's secret for backwards compatibility
+   * with constructs that accept a single secret reference.
+   */
   public readonly dataSourceSecret: secretsmanager.Secret;
 
   constructor(scope: Construct, id: string, props: ClientConfigProps) {
@@ -60,15 +67,18 @@ export class ClientConfig extends Construct {
       }),
     });
 
-    // Parameter Store: Data Source (non-sensitive metadata only)
+    // Parameter Store: Data Source (non-sensitive metadata only — one entry per source)
     this.dataSourceParameter = new ssm.StringParameter(this, "DataSource", {
       parameterName: `/${clientId}/config/datasource`,
       description: `Data source configuration for ${clientId}`,
-      stringValue: JSON.stringify({
-        type: config.dataSource.type,
-        apiEndpoint: config.dataSource.apiEndpoint,
-        pageSize: config.dataSource.pageSize ?? 100,
-      }),
+      stringValue: JSON.stringify(
+        config.dataSources.map((ds) => ({
+          id: ds.id,
+          type: ds.type,
+          apiEndpoint: ds.apiEndpoint,
+          pageSize: ds.pageSize ?? 100,
+        })),
+      ),
     });
 
     // Parameter Store: Monitoring
@@ -93,22 +103,30 @@ export class ClientConfig extends Construct {
       ),
     });
 
-    // Secrets Manager: Data Source Credentials
-    this.dataSourceSecret = new secretsmanager.Secret(
-      this,
-      "DataSourceCredentials",
-      {
-        secretName: `/${clientId}/secrets/datasource`,
-        description: `Data source credentials for ${clientId}`,
-        secretStringValue: cdk.SecretValue.unsafePlainText(
-          JSON.stringify({
-            apiToken: config.dataSource.apiToken,
-            webhookSecret: config.dataSource.webhookSecret,
-            apiEndpoint: config.dataSource.apiEndpoint,
-            frontendBaseUrl: config.dataSource.frontendBaseUrl,
-          }),
-        ),
-      },
-    );
+    // Secrets Manager: one secret per data source at /{clientId}/secrets/datasource/{sourceId}
+    this.dataSourceSecrets = new Map<string, secretsmanager.Secret>();
+    for (const ds of config.dataSources) {
+      const secret = new secretsmanager.Secret(
+        this,
+        `DataSourceCredentials-${ds.id}`,
+        {
+          secretName: `/${clientId}/secrets/datasource/${ds.id}`,
+          description: `Data source credentials for ${clientId} / ${ds.id}`,
+          secretStringValue: cdk.SecretValue.unsafePlainText(
+            JSON.stringify({
+              apiToken: ds.apiToken,
+              webhookSecret: ds.webhookSecret,
+              apiEndpoint: ds.apiEndpoint,
+              frontendBaseUrl: ds.frontendBaseUrl,
+            }),
+          ),
+        },
+      );
+      this.dataSourceSecrets.set(ds.id, secret);
+    }
+
+    // Point the legacy single-secret reference to the first source
+    this.dataSourceSecret = this.dataSourceSecrets.values().next()
+      .value as secretsmanager.Secret;
   }
 }

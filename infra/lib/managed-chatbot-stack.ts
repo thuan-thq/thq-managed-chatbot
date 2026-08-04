@@ -101,7 +101,7 @@ export class ManagedChatbotStack extends cdk.Stack {
       ],
       secrets: [
         this.clientConfig.apiKeysSecret,
-        this.clientConfig.dataSourceSecret,
+        ...this.clientConfig.dataSourceSecrets.values(),
       ],
     });
 
@@ -121,7 +121,7 @@ export class ManagedChatbotStack extends cdk.Stack {
       ],
       secrets: [
         this.clientConfig.apiKeysSecret,
-        this.clientConfig.dataSourceSecret,
+        ...this.clientConfig.dataSourceSecrets.values(),
       ],
     });
 
@@ -138,7 +138,7 @@ export class ManagedChatbotStack extends cdk.Stack {
       ],
       secrets: [
         this.clientConfig.apiKeysSecret,
-        this.clientConfig.dataSourceSecret,
+        ...this.clientConfig.dataSourceSecrets.values(),
       ],
     });
 
