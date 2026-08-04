@@ -4,9 +4,8 @@ import React from "react";
 import { ShadowDomContainer } from "./shadow-dom-container";
 import { ChatWidget } from "./chat-widget";
 import { WidgetErrorBoundary } from "./widget-error-boundary";
-import { getBrandingConfig } from "@/lib/branding";
-import { generateWidgetStyles } from "@/lib/widget-styles";
-
+import { generateWidgetStyles } from "../../lib/widget-styles";
+import { getBrandingConfig } from "../../lib/branding";
 /**
  * Top-level embed component that renders the chat widget inside a Shadow DOM
  * container with full style isolation and error boundaries.

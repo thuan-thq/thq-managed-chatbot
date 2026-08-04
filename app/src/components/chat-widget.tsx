@@ -1,16 +1,16 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback, useId } from "react";
-import { BrandingConfig } from "@/lib/branding";
+import { BrandingConfig } from "../../lib/branding";
 import {
   ChatMessage,
   CitationMetadata,
   WidgetError,
   WidgetState,
-} from "@/lib/types";
-import { streamChat } from "@/lib/sse-client";
-import { createSession } from "@/lib/session-client";
-import { renderMarkdown } from "@/lib/markdown";
+} from "../../lib/types";
+import { streamChat } from "../../lib/sse-client";
+import { createSession } from "../../lib/session-client";
+import { renderMarkdown } from "../../lib/markdown";
 
 interface ChatWidgetProps {
   branding: BrandingConfig;
