@@ -1,176 +1,21 @@
 [
   {
-    "name": "case-studies",
-    "strapiUid": "api::case-study.case-study",
-    "markdownStrategy": "content-blocks",
-    "fieldMappings": {
-      "titleFields": ["title"],
-      "slugField": "slug",
-      "summaryField": "excerpt",
-      "contentBlocksField": "components",
-      "lastModifiedField": "updatedAt"
-    },
-    "populate": {
-      "wildcard": false,
-      "fields": [
-        { "key": "populate[media][populate]", "value": "*" },
-        { "key": "populate[specialty_taxonomies][populate]", "value": "*" },
-        { "key": "populate[deliverables][populate]", "value": "*" },
-        { "key": "populate[client][populate]", "value": "*" },
-        { "key": "populate[tags][populate]", "value": "*" },
-        { "key": "populate[thumbnail][populate]", "value": "*" },
-        { "key": "populate[heading][populate]", "value": "*" },
-        {
-          "key": "populate[components][on][dynamic.text-and-image][populate]",
-          "value": "image"
-        },
-        {
-          "key": "populate[components][on][dynamic.gallery][populate][items][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.text-quote-block][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.accordion][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.double-text-block][populate]",
-          "value": "*"
-        }
-      ]
-    },
-    "urlPathTemplate": "/work/{slug}"
-  },
-  {
-    "name": "clients",
-    "strapiUid": "api::client.client",
-    "markdownStrategy": "flat-fields",
-    "fieldMappings": {
-      "titleFields": ["name"],
-      "slugField": "slug",
-      "flatFields": ["name", "description"],
-      "lastModifiedField": "updatedAt"
-    },
-    "populate": {
-      "wildcard": false,
-      "fields": [{ "key": "populate[logo]", "value": "*" }]
-    },
-    "urlPathTemplate": ""
-  },
-  {
-    "name": "disciplines",
-    "strapiUid": "api::discipline.discipline",
-    "markdownStrategy": "content-blocks",
-    "fieldMappings": {
-      "titleFields": ["name"],
-      "slugField": "slug",
-      "contentBlocksField": "components",
-      "lastModifiedField": "updatedAt"
-    },
-    "populate": {
-      "wildcard": false,
-      "fields": [
-        { "key": "populate[service_areas][populate]", "value": "*" },
-        { "key": "populate[partnerships][populate]", "value": "*" },
-        {
-          "key": "populate[components][on][dynamic.text-and-image][populate]",
-          "value": "image"
-        },
-        {
-          "key": "populate[components][on][dynamic.gallery][populate][items][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.text-quote-block][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.accordion][populate]",
-          "value": "*"
-        },
-        {
-          "key": "populate[components][on][dynamic.advisory-panel][populate]",
-          "value": "*"
-        }
-      ]
-    },
-    "urlPathTemplate": "/disciplines/{slug}"
-  },
-  {
-    "name": "internships",
-    "strapiUid": "api::internship.internship",
-    "markdownStrategy": "flat-fields",
-    "fieldMappings": {
-      "titleFields": ["title"],
-      "slugField": "slug",
-      "flatFields": [
-        "title",
-        "description",
-        "location",
-        "duration",
-        "requirements"
-      ],
-      "lastModifiedField": "updatedAt"
-    },
-    "populate": {
-      "wildcard": true
-    },
-    "urlPathTemplate": "/careers/internships/{slug}"
-  },
-  {
-    "name": "jobs",
-    "strapiUid": "api::job.job",
-    "markdownStrategy": "flat-fields",
-    "fieldMappings": {
-      "titleFields": ["title"],
-      "slugField": "slug",
-      "flatFields": [
-        "title",
-        "description",
-        "location",
-        "employmentType",
-        "salary"
-      ],
-      "lastModifiedField": "updatedAt"
-    },
-    "populate": {
-      "wildcard": false,
-      "fields": [{ "key": "populate[discipline][populate]", "value": "*" }]
-    },
-    "urlPathTemplate": "/careers/{slug}"
-  },
-  {
-    "name": "articles",
-    "strapiUid": "api::article.article",
-    "markdownStrategy": "flat-fields",
-    "fieldMappings": {
-      "titleFields": ["title"],
-      "slugField": "slug",
-      "summaryField": "excerpt",
-      "flatFields": ["title", "excerpt", "content", "author"],
-      "lastModifiedField": "updatedAt"
-    },
-    "populate": {
-      "wildcard": true
-    },
-    "urlPathTemplate": "/news/{slug}"
-  },
-  {
     "name": "pages",
     "strapiUid": "api::page.page",
     "markdownStrategy": "content-blocks",
     "fieldMappings": {
-      "titleFields": ["title"],
+      "titleFields": ["name"],
       "slugField": "slug",
+      "summaryField": "summary",
       "contentBlocksField": "components",
       "lastModifiedField": "updatedAt"
     },
+    "urlPathTemplate": "/{slug}",
     "populate": {
-      "wildcard": false,
       "fields": [
+        { "key": "populate[head_title][populate]", "value": "*" },
+        { "key": "populate[BCorpLogo][populate]", "value": "*" },
+        { "key": "populate[seo][populate]", "value": "*" },
         { "key": "populate[heading][populate]", "value": "*" },
         {
           "key": "populate[components][on][dynamic.text-and-image][populate]",
@@ -182,6 +27,14 @@
         },
         {
           "key": "populate[components][on][dynamic.text-quote-block][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.case-study-listing][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.people-listing][populate]",
           "value": "*"
         },
         {
@@ -197,11 +50,31 @@
           "value": "*"
         },
         {
+          "key": "populate[components][on][dynamic.news-listing][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.clients-logo][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.shuffled-photo][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.image-and-cta-block][populate]",
+          "value": "*"
+        },
+        {
           "key": "populate[components][on][dynamic.text-block][populate]",
           "value": "*"
         },
         {
           "key": "populate[components][on][dynamic.double-text-block][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.job-listing][populate]",
           "value": "*"
         },
         {
@@ -233,11 +106,31 @@
           "value": "*"
         },
         {
+          "key": "populate[components][on][dynamic.internship-listing][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.text-scroll][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.vector-masked-video][populate]",
+          "value": "*"
+        },
+        {
           "key": "populate[components][on][dynamic.about-us-values-block][populate]",
           "value": "*"
         },
         {
           "key": "populate[components][on][dynamic.homepage-text-block][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.specialty-block][populate][specialtyBlock][populate][certifications][populate][image][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.the-blob][populate]",
           "value": "*"
         },
         {
@@ -247,27 +140,166 @@
         {
           "key": "populate[components][on][dynamic.multicultural-map][populate]",
           "value": "*"
+        },
+        {
+          "key": "populate[components][on][decoration.arrow][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][decoration.space][populate]",
+          "value": "*"
         }
       ]
+    }
+  },
+  {
+    "name": "home-page",
+    "strapiUid": "api::home-page.home-page",
+    "markdownStrategy": "content-blocks",
+    "fieldMappings": {
+      "titleFields": ["title"],
+      "contentBlocksField": "components",
+      "lastModifiedField": "updatedAt"
     },
-    "urlPathTemplate": "/{slug}"
+    "populate": {
+      "fields": [
+        { "key": "populate[seo][populate]", "value": "*" },
+        { "key": "populate[recent_works][populate]", "value": "*" },
+        { "key": "populate[components][populate]", "value": "*" },
+        { "key": "populate[heroComponents][populate]", "value": "*" },
+        {
+          "key": "populate[CaseStudyTiles][populate][image1][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][gif1][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][link1][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][image2][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][gif2][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][link2][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][image3][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][gif3][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][link3][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][image4][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][gif4][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][link4][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][case_study_1][fields]",
+          "value": "title,slug"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][case_study_1][populate][heading][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][case_study_2][fields]",
+          "value": "title,slug"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][case_study_2][populate][heading][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][case_study_3][fields]",
+          "value": "title,slug"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][case_study_3][populate][heading][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][case_study_4][fields]",
+          "value": "title,slug"
+        },
+        {
+          "key": "populate[CaseStudyTiles][populate][case_study_4][populate][heading][populate]",
+          "value": "*"
+        }
+      ]
+    }
+  },
+  {
+    "name": "articles",
+    "strapiUid": "api::article.article",
+    "markdownStrategy": "rich-text",
+    "fieldMappings": {
+      "titleFields": ["name", "title"],
+      "slugField": "slug",
+      "summaryField": "summary",
+      "richTextField": "body",
+      "lastModifiedField": "updatedAt"
+    },
+    "urlPathTemplate": "/news/{slug}",
+    "populate": {
+      "fields": [
+        { "key": "populate[title][populate]", "value": "*" },
+        { "key": "populate[authorPhoto][populate]", "value": "*" },
+        { "key": "populate[headerImage][populate]", "value": "*" },
+        { "key": "populate[portraitThumbnail][populate]", "value": "*" },
+        { "key": "populate[featuredThumbnail][populate]", "value": "*" },
+        { "key": "populate[squareThumbnail][populate]", "value": "*" },
+        { "key": "populate[seo][populate]", "value": "*" }
+      ]
+    }
   },
   {
     "name": "resources",
     "strapiUid": "api::resource.resource",
     "markdownStrategy": "content-blocks",
     "fieldMappings": {
-      "titleFields": ["title"],
+      "titleFields": ["name", "title"],
       "slugField": "slug",
-      "summaryField": "excerpt",
+      "summaryField": "summary",
+      "richTextField": "body",
       "contentBlocksField": "components",
       "lastModifiedField": "updatedAt"
     },
+    "urlPathTemplate": "/resources/{slug}",
     "populate": {
-      "wildcard": false,
       "fields": [
-        { "key": "populate[headerImage][populate]", "value": "*" },
+        { "key": "populate[title][populate]", "value": "*" },
+        { "key": "populate[authorPhoto][populate]", "value": "*" },
+        { "key": "populate[seo][populate]", "value": "*" },
+        { "key": "populate[portraitThumbnail][populate]", "value": "*" },
         { "key": "populate[featuredThumbnail][populate]", "value": "*" },
+        { "key": "populate[headerImage][populate]", "value": "*" },
+        { "key": "populate[squareThumbnail][populate]", "value": "*" },
+        {
+          "key": "populate[components][on][dynamic.multicultural-map][populate]",
+          "value": "*"
+        },
         {
           "key": "populate[components][on][dynamic.text-and-image][populate]",
           "value": "image"
@@ -281,7 +313,31 @@
           "value": "*"
         },
         {
+          "key": "populate[components][on][dynamic.case-study-listing][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.people-listing][populate]",
+          "value": "*"
+        },
+        {
           "key": "populate[components][on][dynamic.text-and-cta-block][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.news-listing][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.clients-logo][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.shuffled-photo][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.image-and-cta-block][populate]",
           "value": "*"
         },
         {
@@ -290,6 +346,10 @@
         },
         {
           "key": "populate[components][on][dynamic.double-text-block][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.job-listing][populate]",
           "value": "*"
         },
         {
@@ -305,11 +365,201 @@
           "value": "*"
         },
         {
-          "key": "populate[components][on][dynamic.multicultural-map][populate]",
+          "key": "populate[components][on][dynamic.values-block][populate][title][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.values-block][populate][values][populate]",
           "value": "*"
         }
       ]
+    }
+  },
+  {
+    "name": "case-studies",
+    "strapiUid": "api::case-study.case-study",
+    "markdownStrategy": "content-blocks",
+    "fieldMappings": {
+      "titleFields": ["title", "heading"],
+      "slugField": "slug",
+      "summaryField": "summary",
+      "contentBlocksField": "components",
+      "lastModifiedField": "updatedAt"
     },
-    "urlPathTemplate": "/resources/{slug}"
+    "urlPathTemplate": "/our-work/{slug}",
+    "populate": {
+      "fields": [
+        { "key": "populate[seo][populate]", "value": "*" },
+        { "key": "populate[heading][populate]", "value": "*" },
+        { "key": "populate[media][populate]", "value": "*" },
+        { "key": "populate[thumbnail][populate]", "value": "*" },
+        { "key": "populate[thumbnailHover][populate]", "value": "*" },
+        { "key": "populate[featured_thumbnail][populate]", "value": "*" },
+        { "key": "populate[specialty_taxonomies][populate]", "value": "*" },
+        { "key": "populate[deliverables][populate]", "value": "*" },
+        { "key": "populate[client][populate]", "value": "*" },
+        { "key": "populate[tags][populate]", "value": "*" },
+        {
+          "key": "populate[components][on][dynamic.text-and-image][populate]",
+          "value": "image"
+        },
+        {
+          "key": "populate[components][on][dynamic.gallery][populate][items][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.text-quote-block][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.accordion][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.askvic-chatbot-microsite][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.double-text-block][populate]",
+          "value": "*"
+        }
+      ]
+    }
+  },
+  {
+    "name": "disciplines",
+    "strapiUid": "api::discipline.discipline",
+    "markdownStrategy": "content-blocks",
+    "fieldMappings": {
+      "titleFields": ["name"],
+      "slugField": "slug",
+      "summaryField": "body",
+      "contentBlocksField": "components",
+      "lastModifiedField": "updatedAt"
+    },
+    "urlPathTemplate": "/services/{slug}",
+    "populate": {
+      "fields": [
+        { "key": "populate[seo][populate]", "value": "*" },
+        { "key": "populate[title][populate]", "value": "*" },
+        { "key": "populate[service_areas][populate]", "value": "*" },
+        { "key": "populate[partnerships][populate]", "value": "*" },
+        {
+          "key": "populate[components][on][dynamic.text-and-image][populate]",
+          "value": "image"
+        },
+        {
+          "key": "populate[components][on][dynamic.gallery][populate][items][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.text-quote-block][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.accordion][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.e-newsletter-form][populate]",
+          "value": "*"
+        },
+        {
+          "key": "populate[components][on][dynamic.advisory-panel][populate]",
+          "value": "*"
+        }
+      ]
+    }
+  },
+  {
+    "name": "jobs",
+    "strapiUid": "api::job.job",
+    "markdownStrategy": "flat-fields",
+    "fieldMappings": {
+      "titleFields": ["title"],
+      "summaryField": "summary",
+      "flatFields": [
+        "title",
+        "summary",
+        "city",
+        "description",
+        "aboutTheRole",
+        "aboutYou",
+        "extraInfo",
+        "board_id"
+      ],
+      "lastModifiedField": "updatedAt"
+    },
+    "urlPathTemplate": "/careers/apply/{slug}",
+    "populate": {
+      "fields": [{ "key": "populate[discipline][populate]", "value": "*" }]
+    }
+  },
+  {
+    "name": "internships",
+    "strapiUid": "api::internship.internship",
+    "markdownStrategy": "flat-fields",
+    "fieldMappings": {
+      "titleFields": ["title"],
+      "flatFields": [
+        "title",
+        "city",
+        "description",
+        "aboutTheRole",
+        "aboutYou",
+        "skills",
+        "extraInfo",
+        "board_id"
+      ],
+      "lastModifiedField": "updatedAt"
+    },
+    "urlPathTemplate": "/internships/apply/{slug}",
+    "populate": {
+      "fields": [{ "key": "populate[form][populate]", "value": "*" }]
+    }
+  },
+  {
+    "name": "staffs",
+    "strapiUid": "api::staff.staff",
+    "markdownStrategy": "flat-fields",
+    "fieldMappings": {
+      "titleFields": ["name"],
+      "flatFields": ["name", "title", "tag", "linkedin"],
+      "lastModifiedField": "updatedAt"
+    },
+    "populate": {
+      "fields": [
+        { "key": "populate[image][populate]", "value": "*" },
+        { "key": "populate[second_image][populate]", "value": "*" },
+        { "key": "populate[discipline][populate]", "value": "*" }
+      ]
+    }
+  },
+  {
+    "name": "clients",
+    "strapiUid": "api::client.client",
+    "markdownStrategy": "flat-fields",
+    "fieldMappings": {
+      "titleFields": ["name"],
+      "flatFields": ["name", "shortname"],
+      "lastModifiedField": "updatedAt"
+    },
+    "populate": {
+      "fields": [{ "key": "populate[logo]", "value": "*" }]
+    }
+  },
+  {
+    "name": "forms",
+    "strapiUid": "api::form.form",
+    "markdownStrategy": "flat-fields",
+    "fieldMappings": {
+      "titleFields": ["slug"],
+      "slugField": "slug",
+      "flatFields": ["slug", "submit_label"],
+      "lastModifiedField": "updatedAt"
+    },
+    "populate": {
+      "fields": [{ "key": "populate[items][populate]", "value": "*" }]
+    }
   }
 ]

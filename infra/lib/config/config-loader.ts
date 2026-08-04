@@ -43,49 +43,62 @@ export function validateConfig(config: unknown): ValidationError[] {
     });
   }
 
-  // Validate dataSource
-  if (!cfg.dataSource || typeof cfg.dataSource !== "object") {
+  // Validate dataSources
+  if (!Array.isArray(cfg.dataSources) || cfg.dataSources.length === 0) {
     errors.push({
-      field: "dataSource",
-      message: "dataSource must be an object",
+      field: "dataSources",
+      message: "dataSources must be a non-empty array",
     });
   } else {
-    const ds = cfg.dataSource as Record<string, unknown>;
-    const validTypes = ["strapi", "monday", "employment-hero"];
-    if (!validTypes.includes(ds.type as string)) {
-      errors.push({
-        field: "dataSource.type",
-        message: `dataSource.type must be one of: ${validTypes.join(", ")}`,
-      });
-    }
-    if (typeof ds.apiEndpoint !== "string" || ds.apiEndpoint.length === 0) {
-      errors.push({
-        field: "dataSource.apiEndpoint",
-        message: "dataSource.apiEndpoint must be a non-empty string",
-      });
-    }
-    if (typeof ds.apiToken !== "string" || ds.apiToken.length === 0) {
-      errors.push({
-        field: "dataSource.apiToken",
-        message: "dataSource.apiToken must be a non-empty string",
-      });
-    }
-    if (typeof ds.webhookSecret !== "string" || ds.webhookSecret.length === 0) {
-      errors.push({
-        field: "dataSource.webhookSecret",
-        message: "dataSource.webhookSecret must be a non-empty string",
-      });
-    }
-    if (ds.pageSize !== undefined) {
+    const validTypes = ["strapi", "monday", "employment-hero", "craftcms"];
+    for (let i = 0; i < cfg.dataSources.length; i++) {
+      const ds = cfg.dataSources[i] as Record<string, unknown>;
+      const prefix = `dataSources[${i}]`;
+
+      if (!ds.id || typeof ds.id !== "string") {
+        errors.push({
+          field: `${prefix}.id`,
+          message: `${prefix}.id must be a non-empty string`,
+        });
+      }
+      if (!validTypes.includes(ds.type as string)) {
+        errors.push({
+          field: `${prefix}.type`,
+          message: `${prefix}.type must be one of: ${validTypes.join(", ")}`,
+        });
+      }
+      if (typeof ds.apiEndpoint !== "string" || ds.apiEndpoint.length === 0) {
+        errors.push({
+          field: `${prefix}.apiEndpoint`,
+          message: `${prefix}.apiEndpoint must be a non-empty string`,
+        });
+      }
+      if (typeof ds.apiToken !== "string" || ds.apiToken.length === 0) {
+        errors.push({
+          field: `${prefix}.apiToken`,
+          message: `${prefix}.apiToken must be a non-empty string`,
+        });
+      }
       if (
-        typeof ds.pageSize !== "number" ||
-        ds.pageSize < 1 ||
-        ds.pageSize > 500
+        typeof ds.webhookSecret !== "string" ||
+        ds.webhookSecret.length === 0
       ) {
         errors.push({
-          field: "dataSource.pageSize",
-          message: "dataSource.pageSize must be between 1 and 500",
+          field: `${prefix}.webhookSecret`,
+          message: `${prefix}.webhookSecret must be a non-empty string`,
         });
+      }
+      if (ds.pageSize !== undefined) {
+        if (
+          typeof ds.pageSize !== "number" ||
+          ds.pageSize < 1 ||
+          ds.pageSize > 500
+        ) {
+          errors.push({
+            field: `${prefix}.pageSize`,
+            message: `${prefix}.pageSize must be between 1 and 500`,
+          });
+        }
       }
     }
   }

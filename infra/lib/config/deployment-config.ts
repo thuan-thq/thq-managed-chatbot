@@ -20,18 +20,26 @@ export interface DeploymentConfig {
    * @default 0.3
    */
   confidenceThreshold?: number;
-  dataSource: {
+  /**
+   * Ordered list of data source configurations.
+   * At least one entry is required.
+   */
+  dataSources: Array<{
+    /** Unique identifier for this data source (e.g. "main-strapi"). Used as the secret path segment. */
+    id: string;
     type: "strapi" | "craftcms" | "monday" | "employment-hero";
     apiEndpoint: string;
     /** Stored in Secrets Manager */
     apiToken: string;
     /** Stored in Secrets Manager */
     webhookSecret: string;
-    /** Front-end base URL for constructing source links in markdown output (e.g. "https://staging.intranet.think-hq.com.au"). Stored in Secrets Manager. */
+    /** Front-end base URL for constructing source links in markdown output. Stored in Secrets Manager. */
     frontendBaseUrl?: string;
     /** Default 100 */
     pageSize?: number;
-  };
+    /** Collection definitions — may be empty here and supplied via collections.json at build time. */
+    collections?: unknown[];
+  }>;
   session: {
     /** Minutes, default 30 */
     duration?: number;
