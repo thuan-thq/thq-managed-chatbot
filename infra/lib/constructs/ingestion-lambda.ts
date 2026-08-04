@@ -132,6 +132,7 @@ export class IngestionLambda extends Construct {
           "bedrock:IngestKnowledgeBaseDocuments",
           "bedrock:DeleteKnowledgeBaseDocuments",
           "bedrock:ListIngestionJobs",
+          "bedrock:ListKnowledgeBaseDocuments",
         ],
         resources: [props.knowledgeBaseArn],
       }),

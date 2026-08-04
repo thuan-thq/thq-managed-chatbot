@@ -13,6 +13,7 @@ import {
   IngestKnowledgeBaseDocumentsCommand,
   DeleteKnowledgeBaseDocumentsCommand,
   ListIngestionJobsCommand,
+  ListKnowledgeBaseDocumentsCommand,
 } from "@aws-sdk/client-bedrock-agent";
 
 // ─── Result Types ────────────────────────────────────────────────────────────
@@ -311,6 +312,44 @@ export class BedrockSyncClient {
           `Still running: ${stillRunning.map((j) => j.ingestionJobId).join(", ")}`,
       );
     }
+  }
+
+  /**
+   * Lists all document URIs currently indexed in the Knowledge Base data source,
+   * paginating automatically until all pages are consumed.
+   *
+   * This queries the KB index directly — it returns every document Bedrock
+   * currently knows about regardless of whether the S3 object still exists.
+   * Use this to enumerate stale index entries that have no corresponding S3
+   * object.
+   *
+   * @returns Array of S3 URIs for all indexed documents
+   */
+  async listAllKbDocumentUris(): Promise<string[]> {
+    const uris: string[] = [];
+    let nextToken: string | undefined;
+
+    do {
+      const response = await this.client.send(
+        new ListKnowledgeBaseDocumentsCommand({
+          knowledgeBaseId: this.knowledgeBaseId,
+          dataSourceId: this.dataSourceId,
+          maxResults: 100,
+          ...(nextToken ? { nextToken } : {}),
+        }),
+      );
+
+      for (const doc of response.documentDetails ?? []) {
+        const uri = doc.identifier?.s3?.uri;
+        if (uri) {
+          uris.push(uri);
+        }
+      }
+
+      nextToken = response.nextToken;
+    } while (nextToken);
+
+    return uris;
   }
 
   /**

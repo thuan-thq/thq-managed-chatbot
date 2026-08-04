@@ -494,7 +494,7 @@ async function handleClearKb(): Promise<ClearKbResult> {
     // Continue — attempt the purge anyway
   }
 
-  // Collect all collection prefixes from config
+  // ── Step 1: Delete all S3 objects under every collection prefix ─────────────
   const collections = config.dataSources.flatMap((ds) =>
     ds.collections.map((c) => c.name),
   );
@@ -502,7 +502,7 @@ async function handleClearKb(): Promise<ClearKbResult> {
   console.log(
     JSON.stringify({
       level: "INFO",
-      message: "clear-kb: purging collections",
+      message: "clear-kb: purging S3 objects",
       collections,
     }),
   );
@@ -527,18 +527,6 @@ async function handleClearKb(): Promise<ClearKbResult> {
       continue;
     }
 
-    if (existingKeys.length === 0) {
-      console.log(
-        JSON.stringify({
-          level: "INFO",
-          message: "clear-kb: no documents to purge",
-          collection,
-        }),
-      );
-      continue;
-    }
-
-    // Delete from S3
     for (const key of existingKeys) {
       try {
         await s3Client.deleteDocument("clear", key);
@@ -557,49 +545,85 @@ async function handleClearKb(): Promise<ClearKbResult> {
       }
     }
 
-    // Delete from Bedrock KB in batches of 10 (API limit)
-    for (let i = 0; i < existingKeys.length; i += 10) {
-      const batch = existingKeys.slice(i, i + 10);
-      const s3Uris = batch.map((k) => `s3://${bucketName}/${k}`);
-      try {
-        const results = await bedrockClient.deleteDocuments(s3Uris);
-        console.log(
-          JSON.stringify({
-            level: "INFO",
-            message: "clear-kb: purged KB documents",
-            collection,
-            statuses: results.map((r) => r.status),
-          }),
-        );
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.log(
-          JSON.stringify({
-            level: "ERROR",
-            message: "clear-kb: failed to purge KB documents",
-            uris: s3Uris,
-            error: message,
-          }),
-        );
-        errors.push(`kb:${s3Uris.join(",")}: ${message}`);
-      }
-    }
-
     console.log(
       JSON.stringify({
         level: "INFO",
-        message: "clear-kb: collection purged",
+        message: "clear-kb: S3 objects purged for collection",
         collection,
         count: existingKeys.length,
       }),
     );
   }
 
+  // ── Step 2: Delete ALL indexed KB documents by listing directly from the KB ──
+  // This catches stale index entries that have no corresponding S3 object —
+  // renamed files, old collection prefixes, or anything ingested outside the
+  // current config. We enumerate from the KB itself so nothing is missed.
+  console.log(
+    JSON.stringify({
+      level: "INFO",
+      message: "clear-kb: listing all indexed KB documents",
+      knowledgeBaseId,
+      dataSourceId,
+    }),
+  );
+
+  let allKbUris: string[];
+  try {
+    allKbUris = await bedrockClient.listAllKbDocumentUris();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.log(
+      JSON.stringify({
+        level: "ERROR",
+        message: "clear-kb: failed to list KB documents",
+        error: message,
+      }),
+    );
+    errors.push(`kb-list: ${message}`);
+    allKbUris = [];
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "INFO",
+      message: "clear-kb: deleting all indexed KB documents",
+      count: allKbUris.length,
+    }),
+  );
+
+  // Delete in batches of 10 (API limit)
+  for (let i = 0; i < allKbUris.length; i += 10) {
+    const batch = allKbUris.slice(i, i + 10);
+    try {
+      const results = await bedrockClient.deleteDocuments(batch);
+      console.log(
+        JSON.stringify({
+          level: "INFO",
+          message: "clear-kb: deleted KB document batch",
+          statuses: results.map((r) => r.status),
+        }),
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.log(
+        JSON.stringify({
+          level: "ERROR",
+          message: "clear-kb: failed to delete KB document batch",
+          uris: batch,
+          error: message,
+        }),
+      );
+      errors.push(`kb:${batch.join(",")}: ${message}`);
+    }
+  }
+
   console.log(
     JSON.stringify({
       level: "INFO",
       message: "clear-kb: complete",
-      documentsDeleted,
+      s3DocumentsDeleted: documentsDeleted,
+      kbDocumentsDeleted: allKbUris.length,
       errors: errors.length,
     }),
   );
