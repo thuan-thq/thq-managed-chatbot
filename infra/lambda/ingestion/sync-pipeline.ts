@@ -35,6 +35,12 @@ export interface FullSyncPipelineConfig {
   pageSize?: number;
   /** Interval for progress logging and checkpointing (default 100). */
   progressInterval?: number;
+  /**
+   * When true, purges all existing S3 objects and KB documents under this
+   * collection's prefix before syncing, ensuring a completely fresh ingest.
+   * Defaults to false (incremental orphan-pruning only).
+   */
+  clearBeforeSync?: boolean;
 }
 
 /** Result of a full sync operation. */
@@ -82,6 +88,7 @@ export class FullSyncPipeline {
       clientId: config.clientId,
       pageSize: config.pageSize ?? 100,
       progressInterval: config.progressInterval ?? 100,
+      clearBeforeSync: config.clearBeforeSync ?? false,
     };
   }
 
@@ -125,6 +132,17 @@ export class FullSyncPipeline {
             progressRecords: recordsProcessed,
           }),
         );
+      }
+
+      // When clearBeforeSync is enabled, wipe all existing S3 objects and KB
+      // documents for this collection before ingesting fresh content.
+      // This ensures no stale data survives a full re-sync.
+      if (this.config.clearBeforeSync) {
+        await this.clearCollection(errors);
+        // Reset resume state — a pre-cleared sync always starts from page 1
+        cursor = undefined;
+        resumed = false;
+        recordsProcessed = 0;
       }
 
       // Mark sync as running
@@ -355,6 +373,120 @@ export class FullSyncPipeline {
 
     await this.s3Client.putDocument(document);
     return key;
+  }
+
+  /**
+   * Purges all S3 objects and KB documents under this collection's prefix.
+   *
+   * Called at the start of execute() when clearBeforeSync is true.
+   * Errors during purge are collected but do not abort the sync — a failed
+   * delete means stale data may remain, but the fresh ingest can still proceed.
+   */
+  private async clearCollection(errors: string[]): Promise<void> {
+    const prefix = `documents/${this.config.sourceType}/`;
+    const bucketName = process.env.DATA_BUCKET_NAME ?? "";
+
+    console.log(
+      JSON.stringify({
+        level: "INFO",
+        message: "clearBeforeSync: listing existing documents for purge",
+        sourceType: this.config.sourceType,
+        prefix,
+      }),
+    );
+
+    let existingKeys: string[];
+    try {
+      existingKeys = await this.s3Client.listDocumentKeys(prefix);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.log(
+        JSON.stringify({
+          level: "ERROR",
+          message: "clearBeforeSync: failed to list existing S3 documents",
+          prefix,
+          error: message,
+        }),
+      );
+      errors.push(`clear-list:${prefix}: ${message}`);
+      return;
+    }
+
+    if (existingKeys.length === 0) {
+      console.log(
+        JSON.stringify({
+          level: "INFO",
+          message: "clearBeforeSync: no existing documents to purge",
+          sourceType: this.config.sourceType,
+        }),
+      );
+      return;
+    }
+
+    console.log(
+      JSON.stringify({
+        level: "INFO",
+        message: "clearBeforeSync: purging existing documents",
+        sourceType: this.config.sourceType,
+        count: existingKeys.length,
+      }),
+    );
+
+    // Delete from S3
+    for (const key of existingKeys) {
+      try {
+        await this.s3Client.deleteDocument("clear", key);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.log(
+          JSON.stringify({
+            level: "ERROR",
+            message: "clearBeforeSync: failed to delete S3 object",
+            key,
+            error: message,
+          }),
+        );
+        errors.push(`clear-s3:${key}: ${message}`);
+      }
+    }
+
+    // Delete from Bedrock KB in batches of 10 (API limit).
+    for (let i = 0; i < existingKeys.length; i += 10) {
+      const batch = existingKeys.slice(i, i + 10);
+      const s3Uris = batch.map((k) => `s3://${bucketName}/${k}`);
+      try {
+        const results = await this.bedrockClient.deleteDocuments(s3Uris);
+        console.log(
+          JSON.stringify({
+            level: "INFO",
+            message: "clearBeforeSync: purged KB documents",
+            sourceType: this.config.sourceType,
+            uris: s3Uris,
+            statuses: results.map((r) => r.status),
+          }),
+        );
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.log(
+          JSON.stringify({
+            level: "ERROR",
+            message: "clearBeforeSync: failed to purge KB documents",
+            uris: s3Uris,
+            error: message,
+          }),
+        );
+        errors.push(`clear-kb:${s3Uris.join(",")}: ${message}`);
+      }
+    }
+
+    console.log(
+      JSON.stringify({
+        level: "INFO",
+        message: "clearBeforeSync: purge complete",
+        sourceType: this.config.sourceType,
+        purgedCount: existingKeys.length,
+      }),
+    );
   }
 
   /**

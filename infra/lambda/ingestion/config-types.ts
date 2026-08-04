@@ -153,6 +153,17 @@ export interface StrapiCollectionConfig {
    * An empty string is treated as absent (Req 4.1).
    */
   urlPathTemplate?: string;
+
+  /**
+   * When `true`, this entry describes a Strapi **single type** rather than a
+   * collection. Single types expose `/api/{name}` (no pagination) and return
+   * `{ data: StrapiEntry }` instead of a paginated list.
+   *
+   * The adapter will call the single-type endpoint and treat the response as a
+   * one-item result for both full-sync (`listContent`) and change-detection
+   * (`detectChanges`) flows.
+   */
+  isSingleType?: boolean;
 }
 
 // ─── Data source config ───────────────────────────────────────────────────────

@@ -153,8 +153,29 @@
     }
   },
   {
+    "name": "contact-us",
+    "strapiUid": "api::contact-us.contact-us",
+    "isSingleType": true,
+    "markdownStrategy": "flat-fields",
+    "fieldMappings": {
+      "titleFields": ["head_title"],
+      "flatFields": ["form_title", "our_offices_title", "head_title_animated"],
+      "lastModifiedField": "updatedAt"
+    },
+    "urlPathTemplate": "/contact",
+    "populate": {
+      "fields": [
+        { "key": "populate[seo][populate]", "value": "*" },
+        { "key": "populate[head_title][populate]", "value": "*" },
+        { "key": "populate[contact_info][populate]", "value": "*" },
+        { "key": "populate[our_offices][populate]", "value": "*" }
+      ]
+    }
+  },
+  {
     "name": "home-page",
     "strapiUid": "api::home-page.home-page",
+    "isSingleType": true,
     "markdownStrategy": "content-blocks",
     "fieldMappings": {
       "titleFields": ["title"],

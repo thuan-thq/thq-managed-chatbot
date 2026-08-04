@@ -122,6 +122,18 @@ export class ConfigurableStrapiAdapter implements DataSourceAdapter {
     const name = collectionName ?? this.config.collections[0]?.name ?? "";
     const collectionConfig = this.requireCollection(name);
 
+    // Single types have no pagination — return the one record on the first
+    // "page" and signal there are no more pages thereafter.
+    if (collectionConfig.isSingleType) {
+      // Only the first page has content; subsequent cursor-based calls return empty.
+      if (pagination.cursor) {
+        return { items: [], nextCursor: undefined, totalCount: 0 };
+      }
+      const record = await this.fetchSingleType(collectionConfig);
+      const items = record ? [record] : [];
+      return { items, nextCursor: undefined, totalCount: items.length };
+    }
+
     const pageSize = clampPageSize(pagination.pageSize);
     const page = pagination.cursor ? decodeCursor(pagination.cursor) : 1;
 
@@ -165,6 +177,11 @@ export class ConfigurableStrapiAdapter implements DataSourceAdapter {
   ): Promise<ContentRecord | null> {
     const name = collectionName ?? this.config.collections[0]?.name ?? "";
     const collectionConfig = this.requireCollection(name);
+
+    // Single types don't have entry IDs — the "record" is the type itself.
+    if (collectionConfig.isSingleType) {
+      return this.fetchSingleType(collectionConfig);
+    }
 
     const populateParams = buildPopulateParams(collectionConfig.populate);
     const queryString = populateParams.toString();
@@ -210,6 +227,33 @@ export class ConfigurableStrapiAdapter implements DataSourceAdapter {
   ): Promise<ChangeSet> {
     const name = collectionName ?? this.config.collections[0]?.name ?? "";
     const collectionConfig = this.requireCollection(name);
+
+    // Single types — fetch the one record and decide created vs updated.
+    if (collectionConfig.isSingleType) {
+      const record = await this.fetchSingleType(collectionConfig);
+      if (!record) {
+        return {
+          created: [],
+          updated: [],
+          deleted: [],
+          checkpoint: new Date().toISOString(),
+        };
+      }
+
+      const isInitial = !since;
+      const createdAt = record.metadata["createdAt"];
+      const isCreated =
+        isInitial ||
+        !createdAt ||
+        new Date(createdAt).getTime() > new Date(since).getTime();
+
+      return {
+        created: isCreated ? [record] : [],
+        updated: isCreated ? [] : [record],
+        deleted: [],
+        checkpoint: new Date().toISOString(),
+      };
+    }
 
     const created: ContentRecord[] = [];
     const updated: ContentRecord[] = [];
@@ -258,6 +302,50 @@ export class ConfigurableStrapiAdapter implements DataSourceAdapter {
       deleted: [],
       checkpoint: new Date().toISOString(),
     };
+  }
+
+  // ─── Single-type fetch ────────────────────────────────────────────────────────
+
+  /**
+   * Fetches the sole entry for a Strapi single type.
+   *
+   * Single-type endpoints return `{ data: StrapiEntry }` (no pagination),
+   * so they cannot be handled by the standard list/paginate path.
+   */
+  private async fetchSingleType(
+    collectionConfig: StrapiCollectionConfig,
+  ): Promise<ContentRecord | null> {
+    const populateParams = buildPopulateParams(collectionConfig.populate);
+    const queryString = populateParams.toString();
+    const url = queryString
+      ? `${this.config.baseUrl}/api/${collectionConfig.name}?${queryString}`
+      : `${this.config.baseUrl}/api/${collectionConfig.name}`;
+
+    const response = await this.httpClient.request(url, this.authHeaders());
+
+    if (response.status === 404) {
+      return null;
+    }
+    if (response.status !== 200) {
+      throw new Error(
+        `Strapi API returned status ${response.status}: ${response.body.substring(0, 200)}`,
+      );
+    }
+
+    const body = JSON.parse(response.body) as StrapiSingleResponse;
+    if (!body.data) {
+      return null;
+    }
+
+    // Strapi single types may not carry a numeric id — use the collection name
+    // as a stable synthetic id so the rest of the transform pipeline works.
+    const rawEntry = body.data as StrapiEntry;
+    const entry: StrapiEntry = {
+      ...rawEntry,
+      id: rawEntry.id ?? collectionConfig.name,
+    };
+
+    return this.transformEntry(entry, collectionConfig);
   }
 
   // ─── URL builders ─────────────────────────────────────────────────────────────
@@ -333,10 +421,23 @@ export class ConfigurableStrapiAdapter implements DataSourceAdapter {
       },
     );
 
-    if (!contentBody || contentBody.length === 0) {
-      return null;
+    // Single types are guaranteed to have exactly one record — never drop them
+    // due to empty content (the page may be intentionally sparse or use
+    // structured component fields that the converter doesn't yet render).
+    // For regular collections, an empty body means the entry carries no
+    // indexable text and should be skipped.
+    if (!collectionConfig.isSingleType) {
+      if (!contentBody || contentBody.length === 0) {
+        return null;
+      }
     }
-    if (contentBody.length > MAX_CONTENT_BODY_SIZE) {
+
+    const resolvedContentBody =
+      contentBody && contentBody.length > 0
+        ? contentBody
+        : `# ${collectionConfig.name}`;
+
+    if (resolvedContentBody.length > MAX_CONTENT_BODY_SIZE) {
       return null;
     }
 
@@ -394,7 +495,7 @@ export class ConfigurableStrapiAdapter implements DataSourceAdapter {
 
     return {
       recordId,
-      contentBody,
+      contentBody: resolvedContentBody,
       contentType: "text/markdown",
       metadata,
       lastModified,

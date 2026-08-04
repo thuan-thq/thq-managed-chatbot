@@ -122,7 +122,7 @@ export class IngestionLambda extends Construct {
     // DynamoDB read/write on Webhook Dedup table (for at-most-once processing)
     props.webhookDedupTable.grantReadWriteData(this.role);
 
-    // Bedrock KB ingestion permissions (full scan + targeted ingest/delete)
+    // Bedrock KB ingestion permissions (full scan + targeted ingest/delete + job status)
     this.role.addToPolicy(
       new iam.PolicyStatement({
         sid: "BedrockKBIngestion",
@@ -131,6 +131,7 @@ export class IngestionLambda extends Construct {
           "bedrock:StartIngestionJob",
           "bedrock:IngestKnowledgeBaseDocuments",
           "bedrock:DeleteKnowledgeBaseDocuments",
+          "bedrock:ListIngestionJobs",
         ],
         resources: [props.knowledgeBaseArn],
       }),

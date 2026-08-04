@@ -108,6 +108,12 @@ interface APIGatewayV2Event {
 interface DirectInvocationEvent {
   type: "full-sync";
   sourceType?: string;
+  /**
+   * When true, all existing S3 objects and KB documents for each collection
+   * are purged before syncing, guaranteeing a fresh ingest with no stale data.
+   * Defaults to false.
+   */
+  clearBeforeSync?: boolean;
 }
 
 /** Union of all possible event shapes. */
@@ -285,6 +291,7 @@ async function handleFullSync(
   event: DirectInvocationEvent,
 ): Promise<FullSyncResult> {
   const sourceType = event.sourceType ?? "strapi";
+  const clearBeforeSync = event.clearBeforeSync ?? false;
   const clientId = process.env.CLIENT_ID ?? "";
   const bucketName = process.env.DATA_BUCKET_NAME ?? "";
   const tableName = process.env.SESSIONS_TABLE_NAME ?? "";
@@ -327,6 +334,30 @@ async function handleFullSync(
   const allErrors: string[] = [];
   let lastIngestionJobId: string | undefined;
   let anyResumed = false;
+
+  // When doing a fresh sync, wait for any currently running ingestion jobs to
+  // finish before we start purging. A single wait here covers all collections —
+  // there is only one data source / KB, so one check is enough. Doing it
+  // per-collection (inside clearCollection) races against jobs started by
+  // earlier collections in the same loop.
+  if (clearBeforeSync) {
+    const waitClient = new BedrockSyncClient({ knowledgeBaseId, dataSourceId });
+    try {
+      await waitClient.waitForActiveIngestionJobs();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.log(
+        JSON.stringify({
+          level: "WARN",
+          message:
+            "clearBeforeSync: timed out waiting for ingestion jobs - KB purge may partially fail",
+          error: message,
+        }),
+      );
+      allErrors.push(`clear-kb-wait: ${message}`);
+      // Continue anyway — S3 will still be cleared and fresh docs written
+    }
+  }
 
   // Run sync per data source, then per collection within each source
   for (const ds of config.dataSources) {
@@ -385,7 +416,12 @@ async function handleFullSync(
         s3Client,
         syncStateClient,
         bedrockClient,
-        { sourceType: collection, collectionName: collection, clientId },
+        {
+          sourceType: collection,
+          collectionName: collection,
+          clientId,
+          clearBeforeSync,
+        },
       );
 
       const result = await pipeline.execute();

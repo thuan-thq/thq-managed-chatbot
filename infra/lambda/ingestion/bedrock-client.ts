@@ -12,6 +12,7 @@ import {
   StartIngestionJobCommand,
   IngestKnowledgeBaseDocumentsCommand,
   DeleteKnowledgeBaseDocumentsCommand,
+  ListIngestionJobsCommand,
 } from "@aws-sdk/client-bedrock-agent";
 
 // ─── Result Types ────────────────────────────────────────────────────────────
@@ -239,6 +240,77 @@ export class BedrockSyncClient {
     });
 
     return results;
+  }
+
+  /**
+   * Waits for all currently running or starting ingestion jobs on this data
+   * source to reach a terminal state (COMPLETE, FAILED, or STOPPED).
+   *
+   * Bedrock rejects DeleteKnowledgeBaseDocuments calls while any ingestion job
+   * is in-progress, so callers should await this before attempting deletes.
+   *
+   * @param pollIntervalMs - How often to re-check job status (default 5 000 ms)
+   * @param timeoutMs      - Maximum wait time before throwing (default 120 000 ms)
+   * @throws Error if the timeout is exceeded while jobs are still running
+   */
+  async waitForActiveIngestionJobs(
+    pollIntervalMs = 5_000,
+    timeoutMs = 120_000,
+  ): Promise<void> {
+    const terminalStatuses = new Set(["COMPLETE", "FAILED", "STOPPED"]);
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      // List the most recent jobs — newest first, we only care about non-terminal ones
+      const listResponse = await this.client.send(
+        new ListIngestionJobsCommand({
+          knowledgeBaseId: this.knowledgeBaseId,
+          dataSourceId: this.dataSourceId,
+          maxResults: 10,
+        }),
+      );
+
+      const runningJobs = (listResponse.ingestionJobSummaries ?? []).filter(
+        (j) => !terminalStatuses.has(j.status ?? ""),
+      );
+
+      if (runningJobs.length === 0) {
+        return;
+      }
+
+      console.log(
+        JSON.stringify({
+          level: "INFO",
+          message:
+            "Waiting for running ingestion jobs to complete before KB delete",
+          knowledgeBaseId: this.knowledgeBaseId,
+          dataSourceId: this.dataSourceId,
+          runningJobIds: runningJobs.map((j) => j.ingestionJobId),
+        }),
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+
+    // Final check — one last list before giving up
+    const finalList = await this.client.send(
+      new ListIngestionJobsCommand({
+        knowledgeBaseId: this.knowledgeBaseId,
+        dataSourceId: this.dataSourceId,
+        maxResults: 10,
+      }),
+    );
+
+    const stillRunning = (finalList.ingestionJobSummaries ?? []).filter(
+      (j) => !terminalStatuses.has(j.status ?? ""),
+    );
+
+    if (stillRunning.length > 0) {
+      throw new Error(
+        `Timed out waiting for ingestion jobs to complete after ${timeoutMs}ms. ` +
+          `Still running: ${stillRunning.map((j) => j.ingestionJobId).join(", ")}`,
+      );
+    }
   }
 
   /**
