@@ -106,14 +106,8 @@ interface APIGatewayV2Event {
 
 /** Direct invocation event for triggering sync operations. */
 interface DirectInvocationEvent {
-  type: "full-sync";
+  type: "full-sync" | "clear-kb";
   sourceType?: string;
-  /**
-   * When true, all existing S3 objects and KB documents for each collection
-   * are purged before syncing, guaranteeing a fresh ingest with no stale data.
-   * Defaults to false.
-   */
-  clearBeforeSync?: boolean;
 }
 
 /** Union of all possible event shapes. */
@@ -204,9 +198,12 @@ async function getDataSourceSecrets(
  */
 export async function handler(
   event: LambdaEvent,
-): Promise<LambdaResponse | FullSyncResult> {
+): Promise<LambdaResponse | FullSyncResult | ClearKbResult> {
   // Handle direct invocation for full sync
   if (isDirectInvocation(event)) {
+    if (event.type === "clear-kb") {
+      return await handleClearKb();
+    }
     return await handleFullSync(event);
   }
 
@@ -274,7 +271,9 @@ function isDirectInvocation(
   event: LambdaEvent,
 ): event is DirectInvocationEvent {
   return (
-    "type" in event && (event as DirectInvocationEvent).type === "full-sync"
+    ("type" in event &&
+      (event as DirectInvocationEvent).type === "full-sync") ||
+    ("type" in event && (event as DirectInvocationEvent).type === "clear-kb")
   );
 }
 
@@ -291,7 +290,6 @@ async function handleFullSync(
   event: DirectInvocationEvent,
 ): Promise<FullSyncResult> {
   const sourceType = event.sourceType ?? "strapi";
-  const clearBeforeSync = event.clearBeforeSync ?? false;
   const clientId = process.env.CLIENT_ID ?? "";
   const bucketName = process.env.DATA_BUCKET_NAME ?? "";
   const tableName = process.env.SESSIONS_TABLE_NAME ?? "";
@@ -334,30 +332,6 @@ async function handleFullSync(
   const allErrors: string[] = [];
   let lastIngestionJobId: string | undefined;
   let anyResumed = false;
-
-  // When doing a fresh sync, wait for any currently running ingestion jobs to
-  // finish before we start purging. A single wait here covers all collections —
-  // there is only one data source / KB, so one check is enough. Doing it
-  // per-collection (inside clearCollection) races against jobs started by
-  // earlier collections in the same loop.
-  if (clearBeforeSync) {
-    const waitClient = new BedrockSyncClient({ knowledgeBaseId, dataSourceId });
-    try {
-      await waitClient.waitForActiveIngestionJobs();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.log(
-        JSON.stringify({
-          level: "WARN",
-          message:
-            "clearBeforeSync: timed out waiting for ingestion jobs - KB purge may partially fail",
-          error: message,
-        }),
-      );
-      allErrors.push(`clear-kb-wait: ${message}`);
-      // Continue anyway — S3 will still be cleared and fresh docs written
-    }
-  }
 
   // Run sync per data source, then per collection within each source
   for (const ds of config.dataSources) {
@@ -420,7 +394,6 @@ async function handleFullSync(
           sourceType: collection,
           collectionName: collection,
           clientId,
-          clearBeforeSync,
         },
       );
 
@@ -458,6 +431,185 @@ async function handleFullSync(
 }
 
 // ---- Route handlers ----
+
+/**
+ * Result of a clear-kb operation.
+ */
+export interface ClearKbResult {
+  /** Total documents purged from S3. */
+  documentsDeleted: number;
+  /** Any errors encountered during purge. */
+  errors: string[];
+  /** Whether the purge completed without errors. */
+  success: boolean;
+}
+
+/**
+ * Purges all S3 objects and KB documents for every configured collection,
+ * waiting for any in-flight ingestion jobs to finish first.
+ *
+ * Invoke with: { "type": "clear-kb" }
+ *
+ * Run this before a full sync to guarantee a clean slate. The clear and the
+ * sync are intentionally separate invocations so each can be retried or
+ * inspected independently.
+ */
+async function handleClearKb(): Promise<ClearKbResult> {
+  const bucketName = process.env.DATA_BUCKET_NAME ?? "";
+  const knowledgeBaseId = process.env.KNOWLEDGE_BASE_ID ?? "";
+  const dataSourceId = process.env.DATA_SOURCE_ID ?? "";
+
+  const errors: string[] = [];
+  let documentsDeleted = 0;
+
+  const s3Client = new S3ContentClient({ bucketName });
+  const bedrockClient = new BedrockSyncClient({
+    knowledgeBaseId,
+    dataSourceId,
+  });
+
+  console.log(
+    JSON.stringify({
+      level: "INFO",
+      message: "clear-kb: waiting for any running ingestion jobs",
+      knowledgeBaseId,
+      dataSourceId,
+    }),
+  );
+
+  // Wait for in-flight jobs before attempting any KB deletes
+  try {
+    await bedrockClient.waitForActiveIngestionJobs();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.log(
+      JSON.stringify({
+        level: "WARN",
+        message:
+          "clear-kb: timed out waiting for ingestion jobs - KB deletes may fail",
+        error: message,
+      }),
+    );
+    errors.push(`wait: ${message}`);
+    // Continue — attempt the purge anyway
+  }
+
+  // Collect all collection prefixes from config
+  const collections = config.dataSources.flatMap((ds) =>
+    ds.collections.map((c) => c.name),
+  );
+
+  console.log(
+    JSON.stringify({
+      level: "INFO",
+      message: "clear-kb: purging collections",
+      collections,
+    }),
+  );
+
+  for (const collection of collections) {
+    const prefix = `documents/${collection}/`;
+
+    let existingKeys: string[];
+    try {
+      existingKeys = await s3Client.listDocumentKeys(prefix);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.log(
+        JSON.stringify({
+          level: "ERROR",
+          message: "clear-kb: failed to list S3 objects",
+          prefix,
+          error: message,
+        }),
+      );
+      errors.push(`list:${prefix}: ${message}`);
+      continue;
+    }
+
+    if (existingKeys.length === 0) {
+      console.log(
+        JSON.stringify({
+          level: "INFO",
+          message: "clear-kb: no documents to purge",
+          collection,
+        }),
+      );
+      continue;
+    }
+
+    // Delete from S3
+    for (const key of existingKeys) {
+      try {
+        await s3Client.deleteDocument("clear", key);
+        documentsDeleted++;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.log(
+          JSON.stringify({
+            level: "ERROR",
+            message: "clear-kb: failed to delete S3 object",
+            key,
+            error: message,
+          }),
+        );
+        errors.push(`s3:${key}: ${message}`);
+      }
+    }
+
+    // Delete from Bedrock KB in batches of 10 (API limit)
+    for (let i = 0; i < existingKeys.length; i += 10) {
+      const batch = existingKeys.slice(i, i + 10);
+      const s3Uris = batch.map((k) => `s3://${bucketName}/${k}`);
+      try {
+        const results = await bedrockClient.deleteDocuments(s3Uris);
+        console.log(
+          JSON.stringify({
+            level: "INFO",
+            message: "clear-kb: purged KB documents",
+            collection,
+            statuses: results.map((r) => r.status),
+          }),
+        );
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.log(
+          JSON.stringify({
+            level: "ERROR",
+            message: "clear-kb: failed to purge KB documents",
+            uris: s3Uris,
+            error: message,
+          }),
+        );
+        errors.push(`kb:${s3Uris.join(",")}: ${message}`);
+      }
+    }
+
+    console.log(
+      JSON.stringify({
+        level: "INFO",
+        message: "clear-kb: collection purged",
+        collection,
+        count: existingKeys.length,
+      }),
+    );
+  }
+
+  console.log(
+    JSON.stringify({
+      level: "INFO",
+      message: "clear-kb: complete",
+      documentsDeleted,
+      errors: errors.length,
+    }),
+  );
+
+  return {
+    documentsDeleted,
+    errors,
+    success: errors.length === 0,
+  };
+}
 
 /**
  * Handle incoming webhook events from a data source.

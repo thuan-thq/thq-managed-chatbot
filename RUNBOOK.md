@@ -371,31 +371,50 @@ cat /tmp/sync-result.json | jq .
 
 `recordsProcessed` will be > 0 if your data source has published content.
 
-### 9.1a Full sync with pre-purge (fresh sync)
+### 9.1a Clear KB and S3 (fresh slate)
 
-Use `clearBeforeSync: true` to wipe all existing S3 objects and Bedrock KB documents for every collection before re-ingesting. This guarantees no stale content survives the sync — use it when you need a clean slate (e.g. after a bulk delete in the CMS, or when troubleshooting stale KB results).
+Use `clear-kb` to wipe all existing S3 objects and Bedrock KB documents for every collection. Run this **before** a full sync when you need a clean slate — after a bulk delete in the CMS, or when troubleshooting stale KB results.
 
 ```bash
 aws lambda invoke \
   --function-name "${CLIENT_ID}-ingestion" \
   --region ap-southeast-2 \
-  --payload '{"type":"full-sync","clearBeforeSync":true}' \
+  --payload '{"type":"clear-kb"}' \
+  --cli-binary-format raw-in-base64-out \
+  /tmp/clear-result.json
+
+cat /tmp/clear-result.json | jq .
+```
+
+**What it does:**
+
+1. Waits for any in-flight Bedrock ingestion jobs to reach a terminal state (up to 2 minutes)
+2. For each collection, lists all objects under `documents/{collection}/` in S3
+3. Deletes every object from S3
+4. Removes the same documents from the Bedrock KB (in batches of 10)
+
+**Expected:**
+
+```json
+{
+  "documentsDeleted": 126,
+  "errors": [],
+  "success": true
+}
+```
+
+Then run the full sync immediately after:
+
+```bash
+aws lambda invoke \
+  --function-name "${CLIENT_ID}-ingestion" \
+  --region ap-southeast-2 \
+  --payload '{"type":"full-sync"}' \
   --cli-binary-format raw-in-base64-out \
   /tmp/sync-result.json
 
 cat /tmp/sync-result.json | jq .
 ```
-
-**What it does:**
-
-1. For each collection, lists all objects under `documents/{collection}/` in S3
-2. Deletes every object from S3
-3. Removes the same documents from the Bedrock KB (in batches of 10)
-4. Then proceeds with the normal full sync — fetching all records from the source and writing them fresh
-
-**Expected:** same shape as a regular full sync. Any purge errors are collected in `errors[]` but do not abort the sync.
-
-> **Note:** omitting `clearBeforeSync` (or setting it to `false`) keeps the default incremental behaviour — only orphaned documents are pruned at the end of the sync.
 
 ### 9.2 Retrieve the webhook secret for testing
 
