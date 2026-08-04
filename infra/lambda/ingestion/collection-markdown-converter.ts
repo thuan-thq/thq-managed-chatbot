@@ -52,6 +52,12 @@ export class CollectionMarkdownConverter {
       }
     }
 
+    // ── Relation metadata — taxonomy/relation fields populated at top level ──
+    const relationSection = convertRelationMetadata(attrs);
+    if (relationSection.length > 0) {
+      parts.push(relationSection);
+    }
+
     // ── Content body — strategy dispatch ─────────────────────────────────────
     const contentBody = dispatchStrategy(attrs, config);
     if (contentBody.length > 0) {
@@ -181,4 +187,95 @@ function resolveTitle(
   }
 
   return undefined;
+}
+
+// ─── Relation metadata ────────────────────────────────────────────────────────
+
+/**
+ * Extracts names from a Strapi relation array in `{ data: [{ attributes: { name } }] }` format.
+ * Checks `name`, `title`, and `slug` in that order for the label.
+ */
+function extractRelationNames(field: unknown): string[] {
+  if (!field || typeof field !== "object") return [];
+  const rel = field as Record<string, unknown>;
+  const data = rel["data"];
+  if (!Array.isArray(data) || data.length === 0) return [];
+
+  return data
+    .map((item) => {
+      const attrs = (item as Record<string, unknown>)?.["attributes"] as
+        | Record<string, unknown>
+        | undefined;
+      if (!attrs) return "";
+      return (
+        (attrs["name"] as string) ||
+        (attrs["title"] as string) ||
+        (attrs["slug"] as string) ||
+        ""
+      );
+    })
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * Extracts a single-relation name from `{ data: { attributes: { name } } }` format.
+ */
+function extractSingleRelationName(field: unknown): string {
+  if (!field || typeof field !== "object") return "";
+  const rel = field as Record<string, unknown>;
+  const data = rel["data"] as Record<string, unknown> | undefined;
+  if (!data) return "";
+  const attrs = data["attributes"] as Record<string, unknown> | undefined;
+  if (!attrs) return "";
+  return (
+    (attrs["name"] as string) ||
+    (attrs["title"] as string) ||
+    (attrs["slug"] as string) ||
+    ""
+  );
+}
+
+/**
+ * Scans well-known relation fields on an entry and emits a metadata section
+ * for any that are populated. Currently handles:
+ *   - deliverables       → "## Deliverables"
+ *   - specialty_taxonomies → "**Specialties:**"
+ *   - client             → "**Client:**"
+ *
+ * Returns an empty string when none of the fields are present.
+ */
+function convertRelationMetadata(attrs: Record<string, unknown>): string {
+  const lines: string[] = [];
+
+  // Client — single relation
+  const clientName = extractSingleRelationName(attrs["client"]);
+  if (clientName.length > 0) {
+    lines.push(`**Client:** ${clientName}`);
+  }
+
+  // Specialty taxonomies — many relation
+  const specialties = extractRelationNames(attrs["specialty_taxonomies"]);
+  if (specialties.length > 0) {
+    lines.push(`**Specialties:** ${specialties.join(", ")}`);
+  }
+
+  if (lines.length === 0 && !attrs["deliverables"]) {
+    return "";
+  }
+
+  const parts: string[] = [];
+
+  if (lines.length > 0) {
+    parts.push(lines.join("\n"));
+  }
+
+  // Deliverables — many relation, rendered as a list
+  const deliverables = extractRelationNames(attrs["deliverables"]);
+  if (deliverables.length > 0) {
+    parts.push(
+      `## Deliverables\n\n${deliverables.map((d) => `- ${d}`).join("\n")}`,
+    );
+  }
+
+  return parts.join("\n\n");
 }
