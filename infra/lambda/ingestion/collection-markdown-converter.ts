@@ -37,7 +37,7 @@ export class CollectionMarkdownConverter {
   ): string {
     const parts: string[] = [];
 
-    // ── Title (Req 3.1) ──────────────────────────────────────────────────────
+    // ── Title (Req 3.1) — from titleFields only ──────────────────────────────
     const title = resolveTitle(
       attrs,
       config.fieldMappings.titleFields,
@@ -45,6 +45,17 @@ export class CollectionMarkdownConverter {
     );
     if (title !== undefined) {
       parts.push(`# ${title}`);
+    }
+
+    // ── Component field headings — each rendered as ## ────────────────────────
+    const { componentFields } = config.fieldMappings;
+    if (componentFields) {
+      for (const [field, descriptor] of Object.entries(componentFields)) {
+        const text = extractComponentFieldText(attrs[field], descriptor);
+        if (text.length > 0) {
+          parts.push(`\n\n${text}`);
+        }
+      }
     }
 
     // ── Summary section (Req 3.3) ────────────────────────────────────────────
@@ -188,15 +199,12 @@ function convertFlatFieldsStrategy(
 
 // ─── Title resolution (Req 3.1) ───────────────────────────────────────────────
 
+// ─── Title resolution (Req 3.1) ───────────────────────────────────────────────
+
 /**
- * Resolves the document title by checking componentFields first (auto-included),
- * then titleFields. This lets component fields be used for titles without
- * explicitly adding them to titleFields.
- *
- * Resolution order:
- *   1. All componentFields (in key order) — extract text per descriptor
- *   2. titleFields — apply componentFields if present, else plain string/array
- *
+ * Resolves the document title from titleFields in order.
+ * If a field has a componentFields descriptor, uses component extraction.
+ * Otherwise falls back to plain string or generic string array.
  * Returns the first non-empty resolved string, or undefined.
  */
 function resolveTitle(
@@ -204,39 +212,22 @@ function resolveTitle(
   titleFields: string[] | undefined,
   componentFields?: StrapiCollectionConfig["fieldMappings"]["componentFields"],
 ): string | undefined {
-  // 1. Check componentFields first (auto-include for title resolution)
-  if (componentFields) {
-    for (const field of Object.keys(componentFields)) {
-      const text = extractComponentFieldText(
-        attrs[field],
-        componentFields[field],
-      );
-      if (text.length > 0) return text;
-    }
-  }
-
-  // 2. Fall back to titleFields
-  if (!titleFields || titleFields.length === 0) {
-    return undefined;
-  }
+  if (!titleFields || titleFields.length === 0) return undefined;
 
   for (const field of titleFields) {
     const value = attrs[field];
-
-    // componentFields descriptor takes precedence
     const descriptor = componentFields?.[field];
+
     if (descriptor) {
       const text = extractComponentFieldText(value, descriptor);
       if (text.length > 0) return text;
       continue;
     }
 
-    // Plain string
     if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();
     }
 
-    // Generic string array fallback
     if (Array.isArray(value) && value.length > 0) {
       const joined = value
         .filter((item): item is string => typeof item === "string")

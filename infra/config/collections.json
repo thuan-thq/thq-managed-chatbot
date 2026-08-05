@@ -170,6 +170,14 @@
         "head_title": {
           "type": "repeatable-component",
           "textFields": ["Heading"]
+        },
+        "contact_info": {
+          "type": "repeatable-component",
+          "textFields": ["contact_info"]
+        },
+        "our_offices": {
+          "type": "repeatable-component",
+          "textFields": ["location", "address"]
         }
       }
     },
