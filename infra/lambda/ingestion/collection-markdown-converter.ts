@@ -189,25 +189,33 @@ function convertFlatFieldsStrategy(
 // ─── Title resolution (Req 3.1) ───────────────────────────────────────────────
 
 /**
- * Iterates titleFields in order and returns the first value that resolves to
- * a non-empty string.
+ * Resolves the document title by checking componentFields first (auto-included),
+ * then titleFields. This lets component fields be used for titles without
+ * explicitly adding them to titleFields.
  *
- * Resolution order per field:
- *   1. componentFields descriptor — extract textField from each item in the
- *      repeatable-component array and join with a space.
- *   2. Plain string value — returned as-is (trimmed).
- *   3. Array of strings — joined with a space (generic fallback for string[]).
+ * Resolution order:
+ *   1. All componentFields (in key order) — extract text per descriptor
+ *   2. titleFields — apply componentFields if present, else plain string/array
  *
- * Returns undefined if no field resolves to a non-empty string.
+ * Returns the first non-empty resolved string, or undefined.
  */
 function resolveTitle(
   attrs: Record<string, unknown>,
   titleFields: string[] | undefined,
-  componentFields?: Record<
-    string,
-    { type: "repeatable-component"; textField: string }
-  >,
+  componentFields?: StrapiCollectionConfig["fieldMappings"]["componentFields"],
 ): string | undefined {
+  // 1. Check componentFields first (auto-include for title resolution)
+  if (componentFields) {
+    for (const field of Object.keys(componentFields)) {
+      const text = extractComponentFieldText(
+        attrs[field],
+        componentFields[field],
+      );
+      if (text.length > 0) return text;
+    }
+  }
+
+  // 2. Fall back to titleFields
   if (!titleFields || titleFields.length === 0) {
     return undefined;
   }
@@ -215,23 +223,20 @@ function resolveTitle(
   for (const field of titleFields) {
     const value = attrs[field];
 
-    // 1. componentFields descriptor
+    // componentFields descriptor takes precedence
     const descriptor = componentFields?.[field];
-    if (descriptor?.type === "repeatable-component" && Array.isArray(value)) {
-      const joined = extractRepeatableComponentText(
-        value,
-        descriptor.textField,
-      );
-      if (joined.length > 0) return joined;
+    if (descriptor) {
+      const text = extractComponentFieldText(value, descriptor);
+      if (text.length > 0) return text;
       continue;
     }
 
-    // 2. Plain string
+    // Plain string
     if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();
     }
 
-    // 3. Generic string array fallback
+    // Generic string array fallback
     if (Array.isArray(value) && value.length > 0) {
       const joined = value
         .filter((item): item is string => typeof item === "string")
@@ -260,10 +265,7 @@ function resolveTitle(
 function renderSupplementaryFlatFields(
   attrs: Record<string, unknown>,
   flatFields: string[],
-  componentFields?: Record<
-    string,
-    { type: "repeatable-component"; textField: string }
-  >,
+  componentFields?: StrapiCollectionConfig["fieldMappings"]["componentFields"],
 ): string {
   const lines: string[] = [];
 
@@ -272,8 +274,8 @@ function renderSupplementaryFlatFields(
 
     // componentFields descriptor
     const descriptor = componentFields?.[field];
-    if (descriptor?.type === "repeatable-component" && Array.isArray(value)) {
-      const text = extractRepeatableComponentText(value, descriptor.textField);
+    if (descriptor) {
+      const text = extractComponentFieldText(value, descriptor);
       if (text.length > 0) lines.push(`**${field}:** ${text}`);
       continue;
     }
@@ -296,32 +298,86 @@ function renderSupplementaryFlatFields(
 
 // ─── Component field extraction ───────────────────────────────────────────────
 
+/** Type alias for the componentFields descriptor */
+type ComponentFieldDescriptor = NonNullable<
+  StrapiCollectionConfig["fieldMappings"]["componentFields"]
+>[string];
+
 /**
- * Extracts text from a repeatable Strapi component array by reading `textField`
- * from each item and joining the results with a space.
- *
- * Handles both nested (`item.attributes.textField`) and flat (`item.textField`)
- * Strapi response formats.
+ * Extracts text from a component field based on its descriptor.
+ * Handles both repeatable-component (array) and component (single object) types.
  */
-function extractRepeatableComponentText(
-  items: unknown[],
-  textField: string,
+function extractComponentFieldText(
+  value: unknown,
+  descriptor: ComponentFieldDescriptor,
 ): string {
+  if (!value) return "";
+
+  if (descriptor.type === "repeatable-component") {
+    if (!Array.isArray(value) || value.length === 0) return "";
+    return extractTextFromItems(value, descriptor.textFields);
+  }
+
+  if (descriptor.type === "component") {
+    if (!value || typeof value !== "object") return "";
+    return extractTextFromItem(
+      value as Record<string, unknown>,
+      descriptor.textFields,
+    );
+  }
+
+  return "";
+}
+
+/**
+ * Extracts text from multiple items in a repeatable-component array.
+ * Joins all extracted textFields values with spaces.
+ */
+function extractTextFromItems(items: unknown[], textFields: string[]): string {
   return items
     .map((item) => {
       if (!item || typeof item !== "object") return "";
-      const obj = item as Record<string, unknown>;
-      // Flat format (Strapi v4.14+)
-      if (typeof obj[textField] === "string") return obj[textField] as string;
-      // Nested format (Strapi v4 with attributes wrapper)
-      const attrs = obj["attributes"] as Record<string, unknown> | undefined;
-      if (attrs && typeof attrs[textField] === "string")
-        return attrs[textField] as string;
-      return "";
+      return extractTextFromItem(item as Record<string, unknown>, textFields);
     })
     .filter((s) => s.trim().length > 0)
     .join(" ")
     .trim();
+}
+
+/**
+ * Extracts text from a single component object using multiple textFields.
+ * Handles both flat (`item.field`) and nested (`item.attributes.field`) formats.
+ */
+function extractTextFromItem(
+  item: Record<string, unknown>,
+  textFields: string[],
+): string {
+  // Try flat format first (Strapi v4.14+)
+  const flatValues = textFields
+    .map((field) =>
+      typeof item[field] === "string" ? (item[field] as string) : "",
+    )
+    .filter((s) => s.trim().length > 0);
+
+  if (flatValues.length > 0) {
+    return flatValues.join(" ").trim();
+  }
+
+  // Try nested format (Strapi v4 with attributes wrapper)
+  const attrs = item["attributes"] as Record<string, unknown> | undefined;
+  if (attrs) {
+    const nestedValues = textFields
+      .map((field) =>
+        typeof attrs[field] === "string" ? (attrs[field] as string) : "",
+      )
+      .filter((s) => s.trim().length > 0);
+
+    if (nestedValues.length > 0) {
+      return nestedValues.join(" ").trim();
+    }
+  }
+
+  return "";
 }
 
 // ─── Relation metadata ────────────────────────────────────────────────────────

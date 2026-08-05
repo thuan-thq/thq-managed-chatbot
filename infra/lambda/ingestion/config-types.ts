@@ -100,22 +100,36 @@ export interface ContentFieldMapping {
    *
    * Each key is a field name on the entry. The value declares:
    *   - `type: "repeatable-component"` — the field is an array of component
-   *     objects. The `textField` property names the key within each item
-   *     whose string value should be extracted and joined with a space to
-   *     produce the field's text representation.
+   *     objects (Strapi repeatable component).
+   *   - `type: "component"` — the field is a single component object
+   *     (Strapi non-repeatable component).
+   *   - `textFields` — ordered list of property names within each component
+   *     to extract text from. Values are joined with a space. Useful when
+   *     a component has multiple text properties (e.g. `["heading1", "heading2"]`).
+   *
+   * componentFields are automatically considered during title resolution —
+   * they don't need to be added to `titleFields`.
    *
    * Example (head_title on pages):
    * ```json
    * {
-   *   "head_title": { "type": "repeatable-component", "textField": "Heading" }
+   *   "head_title": { "type": "repeatable-component", "textFields": ["Heading"] }
    * }
    * ```
    * Strapi returns `[{ "Heading": "Think", ... }, { "Heading": "HQ", ... }]`
    * and the extractor produces `"Think HQ"`.
+   *
+   * Example with multiple text fields:
+   * ```json
+   * {
+   *   "myComponent": { "type": "component", "textFields": ["heading1", "heading2"] }
+   *   "myRepeatable": { "type": "repeatable-component", "textFields": ["title", "subtitle"] }
+   * }
    */
   componentFields?: Record<
     string,
-    { type: "repeatable-component"; textField: string }
+    | { type: "repeatable-component"; textFields: string[] }
+    | { type: "component"; textFields: string[] }
   >;
 
   /**

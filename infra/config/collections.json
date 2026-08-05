@@ -4,7 +4,7 @@
     "strapiUid": "api::page.page",
     "markdownStrategy": "content-blocks",
     "fieldMappings": {
-      "titleFields": ["head_title", "name"],
+      "titleFields": ["name"],
       "slugField": "slug",
       "summaryField": "summary",
       "contentBlocksField": "components",
@@ -12,7 +12,7 @@
       "componentFields": {
         "head_title": {
           "type": "repeatable-component",
-          "textField": "Heading"
+          "textFields": ["Heading"]
         }
       }
     },
@@ -164,9 +164,14 @@
     "isSingleType": true,
     "markdownStrategy": "flat-fields",
     "fieldMappings": {
-      "titleFields": ["head_title"],
       "flatFields": ["form_title", "our_offices_title", "head_title_animated"],
-      "lastModifiedField": "updatedAt"
+      "lastModifiedField": "updatedAt",
+      "componentFields": {
+        "head_title": {
+          "type": "repeatable-component",
+          "textFields": ["Heading"]
+        }
+      }
     },
     "urlPathTemplate": "/contact",
     "populate": {
@@ -306,11 +311,17 @@
     "strapiUid": "api::case-study.case-study",
     "markdownStrategy": "content-blocks",
     "fieldMappings": {
-      "titleFields": ["title", "heading"],
+      "titleFields": ["title"],
       "slugField": "slug",
       "summaryField": "summary",
       "contentBlocksField": "components",
-      "lastModifiedField": "updatedAt"
+      "lastModifiedField": "updatedAt",
+      "componentFields": {
+        "heading": {
+          "type": "repeatable-component",
+          "textFields": ["Heading"]
+        }
+      }
     },
     "urlPathTemplate": "/our-work/{slug}",
     "populate": {
@@ -361,11 +372,11 @@
       "summaryField": "summary",
       "flatFields": [
         "title",
-        "summary",
         "city",
         "description",
         "aboutTheRole",
         "aboutYou",
+        "skills",
         "extraInfo",
         "board_id"
       ],
@@ -382,6 +393,7 @@
     "markdownStrategy": "flat-fields",
     "fieldMappings": {
       "titleFields": ["title"],
+      "summaryField": "summary",
       "flatFields": [
         "title",
         "city",
