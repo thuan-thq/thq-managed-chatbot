@@ -52,6 +52,23 @@ export class CollectionMarkdownConverter {
       }
     }
 
+    // ── Supplementary flat fields (non-flat-fields strategies only) ──────────
+    // Renders flatFields as a metadata section when the primary strategy is
+    // content-blocks or rich-text (e.g. head_title_animated on pages).
+    if (
+      config.markdownStrategy !== "flat-fields" &&
+      config.fieldMappings.flatFields &&
+      config.fieldMappings.flatFields.length > 0
+    ) {
+      const flatSection = renderSupplementaryFlatFields(
+        attrs,
+        config.fieldMappings.flatFields,
+      );
+      if (flatSection.length > 0) {
+        parts.push(flatSection);
+      }
+    }
+
     // ── Relation metadata — taxonomy/relation fields populated at top level ──
     const relationSection = convertRelationMetadata(attrs);
     if (relationSection.length > 0) {
@@ -167,8 +184,9 @@ function convertFlatFieldsStrategy(
 // ─── Title resolution (Req 3.1) ───────────────────────────────────────────────
 
 /**
- * Iterates titleFields in order and returns the first value that is a
- * non-null, non-undefined, non-whitespace-only string.
+ * Iterates titleFields in order and returns the first value that resolves to
+ * a non-empty string. Handles both plain string values and array values
+ * (e.g. Strapi component fields like head_title that return string[]).
  * Returns undefined if no such value is found.
  */
 function resolveTitle(
@@ -181,12 +199,59 @@ function resolveTitle(
 
   for (const field of titleFields) {
     const value = attrs[field];
+    // Plain string
     if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();
+    }
+    // Array of strings (e.g. Strapi component fields like head_title)
+    if (Array.isArray(value) && value.length > 0) {
+      const joined = value
+        .filter((item): item is string => typeof item === "string")
+        .join(" ")
+        .trim();
+      if (joined.length > 0) {
+        return joined;
+      }
     }
   }
 
   return undefined;
+}
+
+// ─── Supplementary flat fields ────────────────────────────────────────────────
+
+/**
+ * Renders flatFields as a supplementary metadata section for collections that
+ * use the content-blocks or rich-text strategy. This lets fields like
+ * head_title_animated be included in the markdown without switching the primary
+ * strategy to flat-fields.
+ *
+ * Each non-blank field value is emitted as a bold key-value line.
+ * Array values (e.g. Strapi component string arrays) are joined with a space.
+ * Returns an empty string when all values are blank/absent.
+ */
+function renderSupplementaryFlatFields(
+  attrs: Record<string, unknown>,
+  flatFields: string[],
+): string {
+  const lines: string[] = [];
+
+  for (const field of flatFields) {
+    const value = attrs[field];
+    if (typeof value === "string" && value.trim().length > 0) {
+      lines.push(`**${field}:** ${value.trim()}`);
+    } else if (Array.isArray(value) && value.length > 0) {
+      const joined = value
+        .filter((item): item is string => typeof item === "string")
+        .join(" ")
+        .trim();
+      if (joined.length > 0) {
+        lines.push(`**${field}:** ${joined}`);
+      }
+    }
+  }
+
+  return lines.join("\n");
 }
 
 // ─── Relation metadata ────────────────────────────────────────────────────────

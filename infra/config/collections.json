@@ -4,10 +4,11 @@
     "strapiUid": "api::page.page",
     "markdownStrategy": "content-blocks",
     "fieldMappings": {
-      "titleFields": ["name"],
+      "titleFields": ["head_title", "name"],
       "slugField": "slug",
       "summaryField": "summary",
       "contentBlocksField": "components",
+      "flatFields": ["head_title_animated"],
       "lastModifiedField": "updatedAt"
     },
     "urlPathTemplate": "/{slug}",
