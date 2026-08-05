@@ -8,8 +8,13 @@
       "slugField": "slug",
       "summaryField": "summary",
       "contentBlocksField": "components",
-      "flatFields": ["head_title_animated"],
-      "lastModifiedField": "updatedAt"
+      "lastModifiedField": "updatedAt",
+      "componentFields": {
+        "head_title": {
+          "type": "repeatable-component",
+          "textField": "Heading"
+        }
+      }
     },
     "urlPathTemplate": "/{slug}",
     "populate": {

@@ -96,6 +96,29 @@ export interface ContentFieldMapping {
   flatFields?: string[];
 
   /**
+   * Describes Strapi component fields that require special extraction logic.
+   *
+   * Each key is a field name on the entry. The value declares:
+   *   - `type: "repeatable-component"` — the field is an array of component
+   *     objects. The `textField` property names the key within each item
+   *     whose string value should be extracted and joined with a space to
+   *     produce the field's text representation.
+   *
+   * Example (head_title on pages):
+   * ```json
+   * {
+   *   "head_title": { "type": "repeatable-component", "textField": "Heading" }
+   * }
+   * ```
+   * Strapi returns `[{ "Heading": "Think", ... }, { "Heading": "HQ", ... }]`
+   * and the extractor produces `"Think HQ"`.
+   */
+  componentFields?: Record<
+    string,
+    { type: "repeatable-component"; textField: string }
+  >;
+
+  /**
    * Field name for the last-modified timestamp. Defaults to `"updatedAt"`.
    * Falls back to `attrs.createdAt`; logs WARN and omits when both absent
    * (Req 3.7, 3.8).

@@ -38,7 +38,11 @@ export class CollectionMarkdownConverter {
     const parts: string[] = [];
 
     // ── Title (Req 3.1) ──────────────────────────────────────────────────────
-    const title = resolveTitle(attrs, config.fieldMappings.titleFields);
+    const title = resolveTitle(
+      attrs,
+      config.fieldMappings.titleFields,
+      config.fieldMappings.componentFields,
+    );
     if (title !== undefined) {
       parts.push(`# ${title}`);
     }
@@ -63,6 +67,7 @@ export class CollectionMarkdownConverter {
       const flatSection = renderSupplementaryFlatFields(
         attrs,
         config.fieldMappings.flatFields,
+        config.fieldMappings.componentFields,
       );
       if (flatSection.length > 0) {
         parts.push(flatSection);
@@ -185,13 +190,23 @@ function convertFlatFieldsStrategy(
 
 /**
  * Iterates titleFields in order and returns the first value that resolves to
- * a non-empty string. Handles both plain string values and array values
- * (e.g. Strapi component fields like head_title that return string[]).
- * Returns undefined if no such value is found.
+ * a non-empty string.
+ *
+ * Resolution order per field:
+ *   1. componentFields descriptor — extract textField from each item in the
+ *      repeatable-component array and join with a space.
+ *   2. Plain string value — returned as-is (trimmed).
+ *   3. Array of strings — joined with a space (generic fallback for string[]).
+ *
+ * Returns undefined if no field resolves to a non-empty string.
  */
 function resolveTitle(
   attrs: Record<string, unknown>,
   titleFields: string[] | undefined,
+  componentFields?: Record<
+    string,
+    { type: "repeatable-component"; textField: string }
+  >,
 ): string | undefined {
   if (!titleFields || titleFields.length === 0) {
     return undefined;
@@ -199,19 +214,30 @@ function resolveTitle(
 
   for (const field of titleFields) {
     const value = attrs[field];
-    // Plain string
+
+    // 1. componentFields descriptor
+    const descriptor = componentFields?.[field];
+    if (descriptor?.type === "repeatable-component" && Array.isArray(value)) {
+      const joined = extractRepeatableComponentText(
+        value,
+        descriptor.textField,
+      );
+      if (joined.length > 0) return joined;
+      continue;
+    }
+
+    // 2. Plain string
     if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();
     }
-    // Array of strings (e.g. Strapi component fields like head_title)
+
+    // 3. Generic string array fallback
     if (Array.isArray(value) && value.length > 0) {
       const joined = value
         .filter((item): item is string => typeof item === "string")
         .join(" ")
         .trim();
-      if (joined.length > 0) {
-        return joined;
-      }
+      if (joined.length > 0) return joined;
     }
   }
 
@@ -227,17 +253,31 @@ function resolveTitle(
  * strategy to flat-fields.
  *
  * Each non-blank field value is emitted as a bold key-value line.
- * Array values (e.g. Strapi component string arrays) are joined with a space.
+ * componentFields descriptors are applied first; plain strings and generic
+ * string arrays are handled as fallbacks.
  * Returns an empty string when all values are blank/absent.
  */
 function renderSupplementaryFlatFields(
   attrs: Record<string, unknown>,
   flatFields: string[],
+  componentFields?: Record<
+    string,
+    { type: "repeatable-component"; textField: string }
+  >,
 ): string {
   const lines: string[] = [];
 
   for (const field of flatFields) {
     const value = attrs[field];
+
+    // componentFields descriptor
+    const descriptor = componentFields?.[field];
+    if (descriptor?.type === "repeatable-component" && Array.isArray(value)) {
+      const text = extractRepeatableComponentText(value, descriptor.textField);
+      if (text.length > 0) lines.push(`**${field}:** ${text}`);
+      continue;
+    }
+
     if (typeof value === "string" && value.trim().length > 0) {
       lines.push(`**${field}:** ${value.trim()}`);
     } else if (Array.isArray(value) && value.length > 0) {
@@ -252,6 +292,36 @@ function renderSupplementaryFlatFields(
   }
 
   return lines.join("\n");
+}
+
+// ─── Component field extraction ───────────────────────────────────────────────
+
+/**
+ * Extracts text from a repeatable Strapi component array by reading `textField`
+ * from each item and joining the results with a space.
+ *
+ * Handles both nested (`item.attributes.textField`) and flat (`item.textField`)
+ * Strapi response formats.
+ */
+function extractRepeatableComponentText(
+  items: unknown[],
+  textField: string,
+): string {
+  return items
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const obj = item as Record<string, unknown>;
+      // Flat format (Strapi v4.14+)
+      if (typeof obj[textField] === "string") return obj[textField] as string;
+      // Nested format (Strapi v4 with attributes wrapper)
+      const attrs = obj["attributes"] as Record<string, unknown> | undefined;
+      if (attrs && typeof attrs[textField] === "string")
+        return attrs[textField] as string;
+      return "";
+    })
+    .filter((s) => s.trim().length > 0)
+    .join(" ")
+    .trim();
 }
 
 // ─── Relation metadata ────────────────────────────────────────────────────────
