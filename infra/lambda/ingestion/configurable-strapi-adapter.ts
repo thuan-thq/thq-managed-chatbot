@@ -627,6 +627,28 @@ export class ConfigurableStrapiAdapter implements DataSourceAdapter {
       return undefined;
     }
 
+    // Single types use a fixed path — no {slug} substitution needed
+    if (collectionConfig.isSingleType) {
+      const constructed = frontendBaseUrl + urlPathTemplate;
+      if (
+        !constructed.startsWith("http://") &&
+        !constructed.startsWith("https://")
+      ) {
+        console.log(
+          JSON.stringify({
+            level: "WARN",
+            message:
+              "Omitting sourceUrl: constructed URL does not start with http:// or https://",
+            collection: collectionConfig.name,
+            recordId,
+            constructed,
+          }),
+        );
+        return undefined;
+      }
+      return constructed;
+    }
+
     // Req 4.5 — template missing {slug} placeholder → WARN + omit
     if (!urlPathTemplate.includes("{slug}")) {
       console.log(
