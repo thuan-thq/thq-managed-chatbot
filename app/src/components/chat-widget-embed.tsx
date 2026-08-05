@@ -3,7 +3,7 @@
 import React from "react";
 import { ShadowDomContainer } from "./shadow-dom-container";
 import { ChatWidget } from "./chat-widget";
-import { WidgetErrorBoundary } from "./widget-error-boundary";
+import { ChatErrorBoundary } from "./chat-error-boundary";
 import { generateWidgetStyles } from "../../lib/widget-styles";
 import { getBrandingConfig } from "../../lib/branding";
 /**
@@ -20,10 +20,10 @@ export function ChatWidgetEmbed() {
   const styles = generateWidgetStyles(branding);
 
   return (
-    <WidgetErrorBoundary>
+    <ChatErrorBoundary>
       <ShadowDomContainer styles={styles}>
         <ChatWidget branding={branding} />
       </ShadowDomContainer>
-    </WidgetErrorBoundary>
+    </ChatErrorBoundary>
   );
 }

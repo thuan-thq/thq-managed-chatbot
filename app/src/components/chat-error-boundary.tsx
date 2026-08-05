@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Component, ErrorInfo, ReactNode } from "react";
+import { Component, ErrorInfo, ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
@@ -11,15 +11,11 @@ interface State {
 }
 
 /**
- * Error boundary that catches all widget initialization and render errors.
+ * Error boundary that catches render and initialization errors.
  * Prevents uncaught exceptions from propagating to the host page.
  * Renders nothing (invisible) on error — no broken UI on the host page.
- *
- * Requirement 1.7: IF the embed script fails to load or encounters an
- * initialization error, THEN the Chat_Widget SHALL not throw uncaught
- * exceptions on the host page and SHALL not render any visible broken UI elements.
  */
-export class WidgetErrorBoundary extends Component<Props, State> {
+export class ChatErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false };
@@ -32,8 +28,8 @@ export class WidgetErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // Log error silently without throwing to host page
     if (typeof console !== "undefined" && console.error) {
-      console.error("[ChatWidget] Initialization error caught:", error.message);
-      console.error("[ChatWidget] Component stack:", errorInfo.componentStack);
+      console.error("[Chat] Initialization error caught:", error.message);
+      console.error("[Chat] Component stack:", errorInfo.componentStack);
     }
   }
 
