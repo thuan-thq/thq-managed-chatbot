@@ -199,8 +199,6 @@ function convertFlatFieldsStrategy(
 
 // ─── Title resolution (Req 3.1) ───────────────────────────────────────────────
 
-// ─── Title resolution (Req 3.1) ───────────────────────────────────────────────
-
 /**
  * Resolves the document title from titleFields in order.
  * If a field has a componentFields descriptor, uses component extraction.
@@ -322,7 +320,7 @@ function extractComponentFieldText(
 
 /**
  * Extracts text from multiple items in a repeatable-component array.
- * Joins all extracted textFields values with spaces.
+ * Each item's resolved textFields are joined with \n, items separated with \n.
  */
 function extractTextFromItems(items: unknown[], textFields: string[]): string {
   return items
@@ -331,12 +329,13 @@ function extractTextFromItems(items: unknown[], textFields: string[]): string {
       return extractTextFromItem(item as Record<string, unknown>, textFields);
     })
     .filter((s) => s.trim().length > 0)
-    .join(" ")
+    .join("\n")
     .trim();
 }
 
 /**
  * Extracts text from a single component object using multiple textFields.
+ * Each resolved textField value is placed on its own line.
  * Handles both flat (`item.field`) and nested (`item.attributes.field`) formats.
  */
 function extractTextFromItem(
@@ -346,12 +345,12 @@ function extractTextFromItem(
   // Try flat format first (Strapi v4.14+)
   const flatValues = textFields
     .map((field) =>
-      typeof item[field] === "string" ? (item[field] as string) : "",
+      typeof item[field] === "string" ? (item[field] as string).trim() : "",
     )
-    .filter((s) => s.trim().length > 0);
+    .filter((s) => s.length > 0);
 
   if (flatValues.length > 0) {
-    return flatValues.join(" ").trim();
+    return flatValues.join("\n");
   }
 
   // Try nested format (Strapi v4 with attributes wrapper)
@@ -359,12 +358,12 @@ function extractTextFromItem(
   if (attrs) {
     const nestedValues = textFields
       .map((field) =>
-        typeof attrs[field] === "string" ? (attrs[field] as string) : "",
+        typeof attrs[field] === "string" ? (attrs[field] as string).trim() : "",
       )
-      .filter((s) => s.trim().length > 0);
+      .filter((s) => s.length > 0);
 
     if (nestedValues.length > 0) {
-      return nestedValues.join(" ").trim();
+      return nestedValues.join("\n");
     }
   }
 
