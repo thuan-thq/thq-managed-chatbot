@@ -432,15 +432,6 @@ export class ConfigurableStrapiAdapter implements DataSourceAdapter {
       }
     }
 
-    const resolvedContentBody =
-      contentBody && contentBody.length > 0
-        ? contentBody
-        : `# ${collectionConfig.name}`;
-
-    if (resolvedContentBody.length > MAX_CONTENT_BODY_SIZE) {
-      return null;
-    }
-
     // ── Slug resolution (Req 3.2) ────────────────────────────────────────────
     const slug = this.resolveSlug(attrs, collectionConfig, recordId);
 
@@ -467,6 +458,26 @@ export class ConfigurableStrapiAdapter implements DataSourceAdapter {
       slug,
       recordId,
     );
+
+    // ── Assemble content body ─────────────────────────────────────────────────
+    let resolvedContentBody =
+      contentBody && contentBody.length > 0
+        ? contentBody
+        : `# ${collectionConfig.name}`;
+
+    // Append "Learn more" link when a sourceUrl is available
+    if (sourceUrl) {
+      const titleField = collectionConfig.fieldMappings.titleFields?.[0];
+      const title =
+        (titleField && typeof attrs[titleField] === "string"
+          ? (attrs[titleField] as string)
+          : null) ?? collectionConfig.name;
+      resolvedContentBody += `\n\n[Learn more about ${title}](${sourceUrl})`;
+    }
+
+    if (resolvedContentBody.length > MAX_CONTENT_BODY_SIZE) {
+      return null;
+    }
 
     // ── S3 document path (Req 8.5) ───────────────────────────────────────────
     const documentPath = deriveDocumentPath(attrs, collectionConfig, recordId);
