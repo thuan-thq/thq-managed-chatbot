@@ -321,7 +321,7 @@ function buildSystemPrompt(contextTexts: string[]): string {
     `Always use Australian English spelling, grammar, and style (e.g., 'colour' not 'color', 'organisation' not 'organization'), ` +
     `unless the user question is in a different language. In that case, respond in the language of the user question. ` +
     `Always give clickable source links from the context for further reference.\n` +
-    `When providing information, please reference the clickable source URLs included in the context (e.g., "Learn more: [Source URL](Source URL)").\n\n` +
+    `When providing information, please reference the source URLs included in the context as a clickable link (e.g., "[Learn more](Source URL)").\n\n` +
     `## Response Formatting Rules\n` +
     `Format your responses for human readability using Markdown:\n` +
     `- Use **bold** for key terms, names, or important concepts.\n` +
